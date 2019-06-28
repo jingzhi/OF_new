@@ -207,6 +207,8 @@ int main( int argc, char** argv )
   #endif
   img_ao_mat = cv::imread(imgfile_ao, incoltype);   // Read the file
   img_bo_mat = cv::imread(imgfile_bo, incoltype);   // Read the file    
+  //cv::cvtColor(img_bo_mat,img_bo_mat,cv::COLOR_RGB2Lab);
+  //cv::cvtColor(img_ao_mat,img_ao_mat,cv::COLOR_RGB2Lab);
   cv::Mat img_ao_fmat, img_bo_fmat;
   cv::Size sz = img_ao_mat.size();
   int width_org = sz.width;   // unpadded original image size
@@ -239,28 +241,32 @@ int main( int argc, char** argv )
     switch (sel_oppoint)
     {
       case 1:
-        patchsz = 8; poverl = 0.3; 
-        lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-2,0); maxiter = 16; miniter = 16; 
+        patchsz = 8; poverl =0.3; 
+        lv_f = 5;//AutoFirstScaleSelect(width_org, fratio, patchsz);
+        lv_l = 3; maxiter = 16; miniter = 1; 
+        //lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
+        //lv_l = std::max(lv_f-2,0); maxiter = 16; miniter = 16; 
         usetvref = 0; 
         break;
       case 3:
         patchsz = 12; poverl = 0.75; 
-        lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 16; 
+        lv_f = 5;//AutoFirstScaleSelect(width_org, fratio, patchsz);
+        lv_l = 1; maxiter = 16; miniter = 1; 
+        //lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 1; 
         usetvref = 1; 
         break;
       case 4:
         patchsz = 12; poverl = 0.75; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-5,0); maxiter = 128; miniter = 128; 
+        lv_l = std::max(lv_f-5,0); maxiter = 128; miniter = 1; 
+        tv_innerit = 1; tv_solverit = 3; tv_sor = 1.6;
         usetvref = 1; 
         break;        
       case 2:
       default:
         patchsz = 8; poverl = 0.4; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-2,0); maxiter = 12; miniter = 12; 
+        lv_l = std::max(lv_f-2,0); maxiter = 12; miniter = 1; 
         usetvref = 1; 
         break;
 

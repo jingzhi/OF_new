@@ -35,9 +35,10 @@ namespace OFC
     patchid(patchid_in)
 {
   pc = new patchstate;
-  CreateStatusStruct(pc);
+  CreateStatusStruct(pc);//Allocate memory for patchstat structure
 
   tmp.resize(op->novals,1);
+  tmp_2nd.resize(op->novals,1);
   dxx_tmp.resize(op->novals,1);
   dyy_tmp.resize(op->novals,1);
 }
@@ -46,7 +47,10 @@ void PatClass::CreateStatusStruct(patchstate * psin)
 {
   // get reference / template patch
   psin->pdiff.resize(op->novals,1);
+  psin->pdiff_2nd.resize(op->novals,1);
   psin->pweight.resize(op->novals,1);
+  psin->pweight_2nd.resize(op->novals,1);
+  psin->isInlier.resize(op->novals,1);
 }
 
 PatClass::~PatClass()
@@ -62,8 +66,10 @@ void PatClass::InitializePatch(Eigen::Map<const Eigen::MatrixXf> * im_ao_in, Eig
 
   pt_ref = pt_ref_in;
   ResetPatch();
+  ResetPatch_2nd();
 
   getPatchStaticNNGrad(im_ao->data(), im_ao_dx->data(), im_ao_dy->data(), &pt_ref, &tmp, &dxx_tmp, &dyy_tmp);
+  tmp_2nd=tmp;
 
   ComputeHessian();
 }
@@ -94,6 +100,7 @@ void PatClass::SetTargetImage(Eigen::Map<const Eigen::MatrixXf> * im_bo_in, Eige
   im_bo_dy = im_bo_dy_in;
 
   ResetPatch();
+  ResetPatch_2nd();
 }
 
 void PatClass::ResetPatch()
@@ -107,6 +114,7 @@ void PatClass::ResetPatch()
   pc->p_in.setZero();
   pc->p_iter.setZero();
   pc->delta_p.setZero();    
+  pc->isInlier.setOnes();
 
   pc->delta_p_sqnorm = 1e-10;
   pc->delta_p_sqnorm_init = 1e-10; 
@@ -114,6 +122,23 @@ void PatClass::ResetPatch()
   pc->mares_old = 1e20;
   pc->cnt=0;
   pc->invalid = false;
+
+
+}
+void PatClass::ResetPatch_2nd()
+{ 
+  pc->hasconverged_2nd=0; 
+  pc->hasoptstarted_2nd=0; 
+  
+  pc->p_iter_2nd.setZero();
+  pc->delta_p_2nd.setZero();    
+  pc->delta_p_sqnorm_2nd = 1e-10;
+  pc->delta_p_sqnorm_init_2nd = 1e-10; 
+  pc->mares_2nd = 1e20;
+  pc->mares_old_2nd = 1e20;
+  pc->cnt_2nd=0;
+  pc->invalid_2nd = true;
+
 }
 
 #if (SELECTMODE==1)
@@ -124,9 +149,11 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
 {
   pc->p_in   = p_in_arg;
   pc->p_iter = p_in_arg;
+  pc->p_iter_2nd = p_in_arg;
 
   // convert from input parameters to 2D query location(s) for patches
   paramtopt();
+  paramtopt_2nd();
 
   // save starting location, only needed for outlier check
   pc->pt_st = pc->pt_iter;
@@ -136,8 +163,11 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
       pc->pt_iter[0] > cpt->tmp_ubw || pc->pt_iter[1] > cpt->tmp_ubh)  
   {
     pc->hasconverged=1;
+    pc->hasconverged_2nd=1;
     pc->pdiff = tmp;
+    pc->pdiff_2nd = tmp_2nd;
     pc->hasoptstarted=1;
+    pc->hasoptstarted_2nd=1;
   }
   else
   {
@@ -149,12 +179,41 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
     pc->hasconverged=0;
 
     OptimizeComputeErrImg();
-    
+    OptimizeComputeErrImg_2nd();
+
     pc->hasoptstarted=1;
+    pc->hasoptstarted_2nd=1;
     pc->invalid = false;
   }
 }
+#if (SELECTMODE==1)
+void PatClass::OptimizeStart_2nd(const Eigen::Vector2f p_in_arg)
+{
+  pc->p_iter_2nd = p_in_arg;
+  paramtopt_2nd();
 
+  //Check if initial position is already invalid
+  if (pc->pt_iter_2nd[0] < cpt->tmp_lb  || pc->pt_iter_2nd[1] < cpt->tmp_lb ||    // check if patch left valid image region
+      pc->pt_iter_2nd[0] > cpt->tmp_ubw || pc->pt_iter_2nd[1] > cpt->tmp_ubh)  
+  {
+    pc->hasconverged_2nd=1;
+    pc->pdiff_2nd = tmp_2nd;
+    pc->hasoptstarted_2nd=1;
+    pc->invalid_2nd= true;
+  }
+  else
+  {
+    pc->cnt_2nd=0; // reset iteration counter
+    pc->delta_p_sqnorm_2nd = 1e-10;
+    pc->delta_p_sqnorm_init_2nd = 1e-10;  // set to arbitrary low value, s.t. that loop condition is definitely true on first iteration
+    pc->mares_2nd = 1e5;          // mean absolute residual
+    pc->mares_old_2nd = 1e20; // for rate of change, keep mares from last iteration in here. Set high so that loop condition is definitely true on first iteration
+    pc->hasconverged_2nd=0;
+    OptimizeComputeErrImg_2nd();
+    pc->hasoptstarted_2nd=1;
+  }
+}
+#endif
 #if (SELECTMODE==1)
 void PatClass::OptimizeIter(const Eigen::Vector2f p_in_arg, const bool untilconv)
 #else
@@ -166,24 +225,100 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
     ResetPatch(); 
     OptimizeStart(p_in_arg);  
   }
+  if (!pc->hasoptstarted_2nd)
+  {
+    ResetPatch_2nd(); 
+    OptimizeStart_2nd(p_in_arg);  
+  }
   int oldcnt=pc->cnt;
-
+  int oldcnt_2nd=pc->cnt_2nd;
+  Eigen::MatrixXf dx;
+  Eigen::MatrixXf dy;
+  float dxx_sign,dyy_sign;
+  //float scale;
+  int validCnt;
+  pc->isInlier.setOnes();
   // optimize patch until convergence, or do only one iteration if DIS visualization is used
-  while (  ! (pc->hasconverged || (untilconv == false && (pc->cnt > oldcnt)))  ) 
+  while (  ! ((pc->hasconverged && pc->hasconverged_2nd) || (untilconv == false &&( pc->cnt > oldcnt))  )) 
   {
     pc->cnt++;
-
+    //pc->isInlier.setOnes();
     // Projection onto sd_images
     #if (SELECTMODE==1)
-      pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()).sum();
-      pc->delta_p[1] = (dyy_tmp.array() * pc->pdiff.array()).sum();
+	    //dx =dxx_tmp.cwiseProduct(pc->pdiff);
+	    //dy =dyy_tmp.cwiseProduct(pc->pdiff);
+		//float mean_pweight=pc->pweight.array().mean();
+		//float std_thres=sqrt(((pc->pweight.array() - mean_pweight)).square().mean());
+		//cout<<"pc->diff:"<<pc->pweight.array()<<endl;
+		//cout<<"mean error"<<mean_pweight<<endl;
+		//cout<<"std error"<<std_thres<<endl;
+	    pc->isInlier =(pc->pweight.array()>20).select(0,pc->isInlier);
+	    pc->isInlier =(pc->pweight.array()<2).select(1,pc->isInlier);
+		//->diff:"<<pc->pweight.array()<<endl;
+	//	if(cpt->width <500){
+	// 	   validCnt=rand()%((int) (op->novals*0.2));
+	// 	   //validCnt=(int) (op->novals*0.2);
+	//	   for (int i = 0; i<validCnt;i++){
+	//	        pc->isInlier[rand()%(op->novals)]=0;
+	//	   }
+	//	}
+		//cout<<"dx sign:"<<dx.array().sign()<<endl;
+		//cout<<"dx mean:"<<dx.array().mean()<<endl;
+		//cout<<"iteration:"<<pc->cnt<<endl;
+		//cout<<"dx:"<<dx.array()<<endl;
+		//cout<<"dy sign:"<<dy.array().sign()<<endl;
+		//cout<<"dy mean:"<<dy.array().mean()<<endl;
+		//cout<<"dy:"<<dy.array()<<endl;
+		//cout<<"isInlier:"<<pc->isInlier.array()<<endl;
+		//cout<<"pc->diff:"<<pc->pdiff.array()<<endl;
+		//cout<<"pc->pweight:"<<pc->pweight.array()<<endl;
+        //pc->delta_p[0] = (dx.array()* pc->isInlier.array()).mean()*validCnt;
+        //pc->delta_p[1] = (dy.array()* pc->isInlier.array()).mean()*validCnt;
+        //pc->delta_p[0] = (dx.array()* pc->isInlier.array()).sum();
+        //pc->delta_p[1] = (dy.array()* pc->isInlier.array()).sum();
+        //pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()).sum();
+        //pc->delta_p[1] = (dyy_tmp.array() * pc->pdiff.array()).sum();
+		//cout<<"delta p"<<endl<<pc->delta_p<<endl;
+		validCnt=(pc->isInlier.array()==1).count();
+		if(validCnt<op->novals*0.8){
+		    //cout<<"validCnt:"<<validCnt<<endl<<endl;
+		    pc->invalid_2nd=false;
+            pc->hasconverged_2nd=0; 
+            pc->cnt_2nd++;
+            pc->delta_p_2nd[0] = (dxx_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum()//.mean()*validCnt;
+            pc->delta_p_2nd[1] = (dyy_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum()//.mean()*validCnt;
+		}
+		else{
+            pc->isInlier.setOnes();
+            pc->hasconverged_2nd=1; 
+		}
+
+        pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()* pc->isInlier.array()).sum();//mean()*validCnt;
+        pc->delta_p[1] = (dyy_tmp.array() * pc->pdiff.array()* pc->isInlier.array()).sum();//mean()*validCnt;
+        //pc->delta_p[0] = (dx.array()).sum();
+        //pc->delta_p[1] = (dy.array()).sum();
     #else
       pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()).sum();
     #endif
-
-    pc->delta_p = pc->Hes.llt().solve(pc->delta_p); // solve linear system
+	    //cout<<"Hes="<<endl<<pc->Hes<<endl;
+        pc->delta_p = pc->Hes.llt().solve(pc->delta_p); // solve linear system xA=b,solve for x
+	if(!pc->invalid_2nd){
+        pc->delta_p_2nd = pc->Hes.llt().solve(pc->delta_p_2nd); // solve linear system xA=b,solve for x
+	}
+		//cout<<"delta p "<<endl<<pc->delta_p<<endl<<endl;
+		//cout<<"delta p 2nd"<<endl<<pc->delta_p_2nd<<endl<<endl;
+		//cout<<"iteration:"<<pc->cnt<<endl;
+		//cout<<"dx:"<<dx.array()<<endl;
+		//cout<<"dx sum sign:"<<dx.array().sign().sum()<<" vs "<<pc->delta_p[0]<<endl;
+	//	cout<<"dy:"<<dy.array()<<endl;
+		//cout<<"dy sum sign:"<<dy.array().sign().sum()<<" vs "<<pc->delta_p[1]<<endl;
     
     pc->p_iter -= pc->delta_p; // update flow vector
+	if(!pc->invalid_2nd){
+        pc->p_iter_2nd -= pc->delta_p_2nd; // update flow vector
+    }
+	//cout<<"current p"<<pc->p_iter<<endl;
+    //pc->p_iter += pc->delta_p; // update flow vector
     
     #if (SELECTMODE==2) // if stereo depth
     if (cpt->camlr==0)
@@ -194,6 +329,9 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
       
     // compute patch locations based on new parameter vector
     paramtopt(); 
+	if(!pc->invalid_2nd){
+        paramtopt_2nd(); 
+	}
       
     // check if patch(es) moved too far from starting location, if yes, stop iteration and reset to starting location
     if ((pc->pt_st - pc->pt_iter).norm() > op->outlierthresh  // check if query patch moved more than >padval from starting location -> most likely outlier
@@ -206,8 +344,22 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
       pc->hasconverged=1;
       pc->hasoptstarted=1;
     }
-        
+      // check if patch(es) moved too far from starting location, if yes, stop iteration and reset to starting location
+    if ((pc->pt_st - pc->pt_iter_2nd).norm() > op->outlierthresh  // check if query patch moved more than >padval from starting location -> most likely outlier
+        ||                  
+        pc->pt_iter_2nd[0] < cpt->tmp_lb  || pc->pt_iter_2nd[1] < cpt->tmp_lb ||    // check patch left valid image region
+        pc->pt_iter_2nd[0] > cpt->tmp_ubw || pc->pt_iter_2nd[1] > cpt->tmp_ubh)  
+    {
+      pc->invalid_2nd = true; // reset
+      pc->p_iter_2nd = pc->p_in; // reset
+      paramtopt_2nd(); 
+      pc->hasconverged_2nd=1;
+      pc->hasoptstarted_2nd=1;
+    }      
     OptimizeComputeErrImg();
+	if(!pc->invalid_2nd){
+        OptimizeComputeErrImg_2nd();
+	}
   }
 }
 
@@ -219,13 +371,17 @@ inline void PatClass::paramtopt()
       pc->pt_iter[0] = pt_ref[0] + pc->p_iter[0];
     #endif
 }
+inline void PatClass::paramtopt_2nd()
+{
+      pc->pt_iter_2nd = pt_ref + pc->p_iter_2nd;    // for optical flow the point displacement and the parameter vector are equivalent
+}
 
 void PatClass::LossComputeErrorImage(Eigen::Matrix<float, Eigen::Dynamic, 1>* patdest, Eigen::Matrix<float, Eigen::Dynamic, 1>* wdest, const Eigen::Matrix<float, Eigen::Dynamic, 1>* patin,  const Eigen::Matrix<float, Eigen::Dynamic, 1>*  tmpin)
 {
-  v4sf * pd = (v4sf*) patdest->data(),
-       * pa = (v4sf*) patin->data(),  
-       * te = (v4sf*) tmpin->data(),
-       * pw = (v4sf*) wdest->data();
+  v4sf * pd = (v4sf*) patdest->data(),//pdiff
+       * pa = (v4sf*) patin->data(),  //pdiff
+       * te = (v4sf*) tmpin->data(),  //tmp
+       * pw = (v4sf*) wdest->data();  //pweight
 
   if (op->costfct==0) // L2 cost function
   {
@@ -261,12 +417,38 @@ void PatClass::LossComputeErrorImage(Eigen::Matrix<float, Eigen::Dynamic, 1>* pa
   }
 }
 
-void PatClass::OptimizeComputeErrImg()
+void PatClass::OptimizeComputeErrImg_2nd()
 {
-  getPatchStaticBil(im_bo->data(), &(pc->pt_iter), &(pc->pdiff));
+  getPatchStaticBil(im_bo->data(), &(pc->pt_iter_2nd), &(pc->pdiff_2nd));// after this pdiff holds target patch content
 
   // Get photometric patch error
-  LossComputeErrorImage(&pc->pdiff, &pc->pweight, &pc->pdiff, &tmp);
+  LossComputeErrorImage(&pc->pdiff_2nd, &pc->pweight_2nd, &pc->pdiff_2nd, &tmp_2nd);//after this pdiff holds image difference, pweight holds absolute image difference
+  //pc->pweight_2nd.array()=pc->pweight_2nd.array()*((1-pc->isInlier.array()).abs());
+
+  // Compute step norm
+  pc->delta_p_sqnorm_2nd = pc->delta_p_2nd.squaredNorm();
+  if (pc->cnt_2nd==1)
+    pc->delta_p_sqnorm_init_2nd = pc->delta_p_sqnorm_2nd;
+
+  // Check early termination criterions
+  pc->mares_old_2nd = pc->mares_2nd;
+  pc->mares_2nd = pc->pweight_2nd.lpNorm<1>() / (op->novals);
+  if ( !  ((pc->cnt_2nd < op->max_iter) &  (pc->mares_2nd  > op->res_thresh) &  
+          ((pc->cnt_2nd < op->min_iter) |  (pc->delta_p_sqnorm_2nd / pc->delta_p_sqnorm_init_2nd >= op->dp_thresh)) &
+          ((pc->cnt_2nd < op->min_iter) |  (pc->mares_2nd / pc->mares_old_2nd <= op->dr_thresh)))  )
+    pc->hasconverged_2nd=1;
+        
+}
+void PatClass::OptimizeComputeErrImg()
+{
+  getPatchStaticBil(im_bo->data(), &(pc->pt_iter), &(pc->pdiff));// after this pdiff holds target patch content
+
+  // Get photometric patch error
+  LossComputeErrorImage(&pc->pdiff, &pc->pweight, &pc->pdiff, &tmp);//after this pdiff holds image difference, pweight holds absolute image difference
+  //cout<<"before"<<pc->pweight.array();
+  //cout<<pc->isInlier.array();
+  //pc->pweight.array()=pc->pweight.array()*(pc->isInlier.array());
+  //cout<<"after"<<pc->pweight.array();
 
   // Compute step norm
   pc->delta_p_sqnorm = pc->delta_p.squaredNorm();
@@ -282,13 +464,16 @@ void PatClass::OptimizeComputeErrImg()
     pc->hasconverged=1;
         
 }
-
 // Extract patch on integer position, and gradients, No Bilinear interpolation
-void PatClass::getPatchStaticNNGrad(const float* img, const float* img_dx, const float* img_dy, 
+// Usage: getPatchStaticNNGrad(im_ao->data(), im_ao_dx->data(), im_ao_dy->data(), &pt_ref, &tmp, &dxx_tmp, &dyy_tmp);
+void PatClass::getPatchStaticNNGrad(
+		            const float* img, 
+					const float* img_dx, 
+					const float* img_dy, 
                     const Eigen::Vector2f* mid_in, 
-                    Eigen::Matrix<float, Eigen::Dynamic, 1>* tmp_in_e,  
-                    Eigen::Matrix<float, Eigen::Dynamic, 1>*  tmp_dx_in_e, 
-                    Eigen::Matrix<float, Eigen::Dynamic, 1>* tmp_dy_in_e)
+                    Eigen::Matrix<float, Eigen::Dynamic, 1>* tmp_in_e,     //&tmp
+                    Eigen::Matrix<float, Eigen::Dynamic, 1>*  tmp_dx_in_e, //&dxx_tmp
+                    Eigen::Matrix<float, Eigen::Dynamic, 1>* tmp_dy_in_e)  //&dyy_tmp
 {
   float *tmp_in    = tmp_in_e->data();
   float *tmp_dx_in = tmp_dx_in_e->data();
@@ -300,7 +485,7 @@ void PatClass::getPatchStaticNNGrad(const float* img, const float* img_dx, const
   pos[0] = round((*mid_in)[0]) + cpt->imgpadding;
   pos[1] = round((*mid_in)[1]) + cpt->imgpadding;
     
-  int posxx = 0;
+  int posxx = 0; //for number of pixels within the patch
 
   int lb = -op->p_samp_s/2;
   int ub = op->p_samp_s/2-1;  
@@ -311,7 +496,7 @@ void PatClass::getPatchStaticNNGrad(const float* img, const float* img_dx, const
     {
       pos_it[0] = pos[0]+i;      
       pos_it[1] = pos[1]+j;
-      int idx = pos_it[0] + pos_it[1] * cpt->tmp_w;
+      int idx = pos_it[0] + pos_it[1] * cpt->tmp_w; //idx = positin in the entire image
 
       #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // Single channel
       tmp_in[posxx] = img[idx];

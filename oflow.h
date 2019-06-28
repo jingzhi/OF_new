@@ -56,7 +56,7 @@ typedef struct
   float patove;                 // point/line padding to all sides (px)
   float outlierthresh;          // displacement threshold (in px) before a patch is flagged as outlier
   int steps;                    // horizontal and vertical distance (in px) between patch centers
-  int novals;                   // number of points in patch (=p_samp_s*p_samp_s) 
+  int novals;                   // number of points in patch (=p_samp_s*p_samp_s*noc) 
   int noc;                      // number of channels in image and gradients 
   int noscales;                 // total number of scales
   float minerrval = 2.0f;       // 1/max(this, error) for pixel averaging weight

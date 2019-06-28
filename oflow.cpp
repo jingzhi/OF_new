@@ -194,7 +194,14 @@ namespace OFC
     {
       grid_bw[ii]->InitializeGrid(im_bo[sl], im_bo_dx[sl], im_bo_dy[sl]);
       grid_bw[ii]->SetTargetImage(im_ao[sl], im_ao_dx[sl], im_ao_dy[sl]);
-    }
+	}
+    //grid_fw[ii]->  InitializeGrid(im_bo[sl], im_bo_dx[sl], im_bo_dy[sl]);
+    //grid_fw[ii]->  SetTargetImage(im_ao[sl], im_ao_dx[sl], im_ao_dy[sl]);
+    //if (op.usefbcon)
+    //{
+    //  grid_bw[ii]->InitializeGrid(im_ao[sl], im_ao_dx[sl], im_ao_dy[sl]);
+    //  grid_bw[ii]->SetTargetImage(im_bo[sl], im_bo_dx[sl], im_bo_dy[sl]);
+    //}
 
     // Timing, Grid construction
     if (op.verbosity>1)
@@ -230,6 +237,7 @@ namespace OFC
     
     
     // Dense Inverse Search. (Step 3 in Algorithm 1 of paper)                                          
+	//cout<<"layer:"<<ii<<endl;
     grid_fw[ii]->Optimize();
     if (op.usefbcon)
       grid_bw[ii]->Optimize();

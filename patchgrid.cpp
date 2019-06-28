@@ -136,6 +136,7 @@ void PatGridClass::Optimize()
     #pragma omp parallel for schedule(dynamic,10)
     for (int i = 0; i < nopatches; ++i)
     {
+	  //cout<<"patch id:"<<i<<"/"<<nopatches<<endl;
       pat[i]->OptimizeIter(p_init[i], true); // optimize until convergence  
     }
 }  
@@ -209,7 +210,7 @@ void PatGridClass::InitializeFromCoarserOF(const float * flow_prev)
     #endif
   }
 }
-
+//Densification
 void PatGridClass::AggregateFlowDense(float *flowout) const
 {
   float* we = new float[cpt->width * cpt->height];
@@ -227,39 +228,49 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
     {
       #if (SELECTMODE==1)
       const Eigen::Vector2f*            fl = pat[ip]->GetParam(); // flow displacement of this patch
-      Eigen::Vector2f flnew;
+      const Eigen::Vector2f*            fl_2nd=NULL; // flow displacement of this patch
+      const float *                     pselector=NULL; // bipolar selector pointer
+      Eigen::Vector2f                   flnew;
+      float                             pweight_2nd=0; // use image error as weight
+	  bool valid_2nd=pat[ip]->IsValid_2nd();
+	  if(valid_2nd){
+          fl_2nd = pat[ip]->GetParam_2nd(); // flow displacement of this patch
+          pselector = pat[ip]->GetpSelectorPtr(); // bipolar selector pointer
+          pweight_2nd = 1.0f / (std::max(pat[ip]->GetpWeight_2nd(),op->minerrval));
+	  }
       #else
       const Eigen::Matrix<float, 1, 1>* fl = pat[ip]->GetParam(); // horz. displacement of this patch
       Eigen::Matrix<float, 1, 1> flnew;
       #endif
       
-      const float * pweight = pat[ip]->GetpWeightPtr(); // use image error as weight
+      const float  pweight = 1.0f/std::max(pat[ip]->GetpWeight(),op->minerrval); // use image error as weight
       
       int lb = -op->p_samp_s/2;
       int ub = op->p_samp_s/2-1;
       
       for (int y = lb; y <= ub; ++y)
       {   
-        for (int x = lb; x <= ub; ++x, ++pweight)
+        for (int x = lb; x <= ub; ++x)
         {
           int yt = (y + pt_ref[ip][1]);
           int xt = (x + pt_ref[ip][0]);
+		  float absw;
 
           if (xt >= 0 && yt >= 0 && xt < cpt->width && yt < cpt->height)
           {
   
-            int i = yt*cpt->width + xt;
-              
-            #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // single channel/gradient image 
-            float absw = 1.0f /  (float)(std::max(op->minerrval  ,*pweight));
-            #else  // RGB image
-            float absw = (float)(std::max(op->minerrval  ,*pweight)); ++pweight;
-                  absw+= (float)(std::max(op->minerrval  ,*pweight)); ++pweight;
-                  absw+= (float)(std::max(op->minerrval  ,*pweight));
-            absw = 1.0f / absw;
-            #endif
-              
-            flnew = (*fl) * absw;
+             int i = yt*cpt->width + xt;
+             absw = pweight;
+             flnew = (*fl) * absw;
+             //if(valid_2nd){
+             //   float selected = (float) *pselector; ++pselector;
+             //         selected+= (float) *pselector; ++pselector;
+             //         selected+= (float) *pselector; ++pselector;
+			 //   if(selected <3){
+             //       absw = pweight_2nd;
+             //       flnew = (*fl_2nd) * absw;
+			 //   }
+			 //}
             we[i] += absw;
 
             #if (SELECTMODE==1)
@@ -275,104 +286,104 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
   } 
   
   // if complementary (forward-backward merging) is given, integrate negative backward flow as well
-  if (cg)
-  {  
-      Eigen::Vector4f wbil; // bilinear weight vector
-      Eigen::Vector4i pos;
-      
-      #ifdef USE_PARALLEL_ON_FLOWAGGR
-        #pragma omp parallel for schedule(static)  
-      #endif    
-      for (int ip = 0; ip < cg->nopatches; ++ip)
-      {
-        if (cg->pat[ip]->IsValid())
-        {
-          #if (SELECTMODE==1)
-          const Eigen::Vector2f*            fl = (cg->pat[ip]->GetParam()); // flow displacement of this patch
-          Eigen::Vector2f flnew;
-          #else
-          const Eigen::Matrix<float, 1, 1>* fl = (cg->pat[ip]->GetParam()); // horz. displacement of this patch
-          Eigen::Matrix<float, 1, 1> flnew;
-          #endif
-        
-          const Eigen::Vector2f rppos = cg->pat[ip]->GetPointPos(); // get patch position after optimization
-          const float * pweight = cg->pat[ip]->GetpWeightPtr(); // use image error as weight
-          
-          Eigen::Vector2f resid;
+  //if (cg)
+  //{  
+  //    Eigen::Vector4f wbil; // bilinear weight vector
+  //    Eigen::Vector4i pos;
+  //    
+  //    #ifdef USE_PARALLEL_ON_FLOWAGGR
+  //      #pragma omp parallel for schedule(static)  
+  //    #endif    
+  //    for (int ip = 0; ip < cg->nopatches; ++ip)
+  //    {
+  //      if (cg->pat[ip]->IsValid())
+  //      {
+  //        #if (SELECTMODE==1)
+  //        const Eigen::Vector2f*            fl = (cg->pat[ip]->GetParam()); // flow displacement of this patch
+  //        Eigen::Vector2f flnew;
+  //        #else
+  //        const Eigen::Matrix<float, 1, 1>* fl = (cg->pat[ip]->GetParam()); // horz. displacement of this patch
+  //        Eigen::Matrix<float, 1, 1> flnew;
+  //        #endif
+  //      
+  //        const Eigen::Vector2f rppos = cg->pat[ip]->GetPointPos(); // get patch position after optimization
+  //        const float * pweight = cg->pat[ip]->GetpWeightPtr(); // use image error as weight
+  //        
+  //        Eigen::Vector2f resid;
 
-          // compute bilinear weight vector
-          pos[0] = ceil(rppos[0] +.00001); // make sure they are rounded up to natural number
-          pos[1] = ceil(rppos[1] +.00001); // make sure they are rounded up to natural number
-          pos[2] = floor(rppos[0]);
-          pos[3] = floor(rppos[1]);
+  //        // compute bilinear weight vector
+  //        pos[0] = ceil(rppos[0] +.00001); // make sure they are rounded up to natural number
+  //        pos[1] = ceil(rppos[1] +.00001); // make sure they are rounded up to natural number
+  //        pos[2] = floor(rppos[0]);
+  //        pos[3] = floor(rppos[1]);
 
-          resid[0] = rppos[0] - pos[2];
-          resid[1] = rppos[1] - pos[3];
-          wbil[0] = resid[0]*resid[1];
-          wbil[1] = (1-resid[0])*resid[1];
-          wbil[2] = resid[0]*(1-resid[1]);
-          wbil[3] = (1-resid[0])*(1-resid[1]);
+  //        resid[0] = rppos[0] - pos[2];
+  //        resid[1] = rppos[1] - pos[3];
+  //        wbil[0] = resid[0]*resid[1];
+  //        wbil[1] = (1-resid[0])*resid[1];
+  //        wbil[2] = resid[0]*(1-resid[1]);
+  //        wbil[3] = (1-resid[0])*(1-resid[1]);
 
-          int lb = -op->p_samp_s/2;
-          int ub = op->p_samp_s/2-1;
+  //        int lb = -op->p_samp_s/2;
+  //        int ub = op->p_samp_s/2-1;
 
-          
-          for (int y = lb; y <= ub; ++y)
-          {   
-            for (int x = lb; x <= ub; ++x, ++pweight)
-            {
-          
-              int yt = y + pos[1]; 
-              int xt = x + pos[0];
-              if (xt >= 1 && yt >= 1 && xt < (cpt->width-1) && yt < (cpt->height-1))
-              {
-                
-                #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // single channel/gradient image
-                float absw = 1.0f /  (float)(std::max(op->minerrval  ,*pweight));
-                #else  // RGB
-                float absw = (float)(std::max(op->minerrval  ,*pweight)); ++pweight;
-                      absw+= (float)(std::max(op->minerrval  ,*pweight)); ++pweight;
-                      absw+= (float)(std::max(op->minerrval  ,*pweight));
-                absw = 1.0f / absw;
-                #endif
-              
-              
-                flnew = (*fl) * absw;
-                
-                int idxcc =  xt    +  yt   *cpt->width;
-                int idxfc = (xt-1) +  yt   *cpt->width;
-                int idxcf =  xt    + (yt-1)*cpt->width;
-                int idxff = (xt-1) + (yt-1)*cpt->width;            
-        
-                we[idxcc] += wbil[0] * absw;
-                we[idxfc] += wbil[1] * absw;
-                we[idxcf] += wbil[2] * absw;
-                we[idxff] += wbil[3] * absw;
+  //        
+  //        for (int y = lb; y <= ub; ++y)
+  //        {   
+  //          for (int x = lb; x <= ub; ++x, ++pweight)
+  //          {
+  //        
+  //            int yt = y + pos[1]; 
+  //            int xt = x + pos[0];
+  //            if (xt >= 1 && yt >= 1 && xt < (cpt->width-1) && yt < (cpt->height-1))
+  //            {
+  //              
+  //              #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // single channel/gradient image
+  //              float absw = 1.0f /  (float)(std::max(op->minerrval  ,*pweight));
+  //              #else  // RGB
+  //              float absw = (float)(std::max(op->minerrval  ,*pweight)); ++pweight;
+  //                    absw+= (float)(std::max(op->minerrval  ,*pweight)); ++pweight;
+  //                    absw+= (float)(std::max(op->minerrval  ,*pweight));
+  //              absw = 1.0f / absw;
+  //              #endif
+  //            
+  //            
+  //              flnew = (*fl) * absw;
+  //              
+  //              int idxcc =  xt    +  yt   *cpt->width;
+  //              int idxfc = (xt-1) +  yt   *cpt->width;
+  //              int idxcf =  xt    + (yt-1)*cpt->width;
+  //              int idxff = (xt-1) + (yt-1)*cpt->width;            
+  //      
+  //              we[idxcc] += wbil[0] * absw;
+  //              we[idxfc] += wbil[1] * absw;
+  //              we[idxcf] += wbil[2] * absw;
+  //              we[idxff] += wbil[3] * absw;
 
-                #if (SELECTMODE==1)
-                flowout[2*idxcc  ] -= wbil[0] * flnew[0];   // use reversed flow 
-                flowout[2*idxcc+1] -= wbil[0] * flnew[1];
+  //              #if (SELECTMODE==1)
+  //              flowout[2*idxcc  ] -= wbil[0] * flnew[0];   // use reversed flow 
+  //              flowout[2*idxcc+1] -= wbil[0] * flnew[1];
 
-                flowout[2*idxfc  ] -= wbil[1] * flnew[0];
-                flowout[2*idxfc+1] -= wbil[1] * flnew[1];
+  //              flowout[2*idxfc  ] -= wbil[1] * flnew[0];
+  //              flowout[2*idxfc+1] -= wbil[1] * flnew[1];
 
-                flowout[2*idxcf  ] -= wbil[2] * flnew[0];
-                flowout[2*idxcf+1] -= wbil[2] * flnew[1];
+  //              flowout[2*idxcf  ] -= wbil[2] * flnew[0];
+  //              flowout[2*idxcf+1] -= wbil[2] * flnew[1];
 
-                flowout[2*idxff  ] -= wbil[3] * flnew[0];
-                flowout[2*idxff+1] -= wbil[3] * flnew[1];
-                #else
-                flowout[idxcc] -= wbil[0] * flnew[0]; // simple averaging of inverse horizontal displacement
-                flowout[idxfc] -= wbil[1] * flnew[0];
-                flowout[idxcf] -= wbil[2] * flnew[0];
-                flowout[idxff] -= wbil[3] * flnew[0];
-                #endif
-              }
-            }
-          }
-        }
-      }
-  } 
+  //              flowout[2*idxff  ] -= wbil[3] * flnew[0];
+  //              flowout[2*idxff+1] -= wbil[3] * flnew[1];
+  //              #else
+  //              flowout[idxcc] -= wbil[0] * flnew[0]; // simple averaging of inverse horizontal displacement
+  //              flowout[idxfc] -= wbil[1] * flnew[0];
+  //              flowout[idxcf] -= wbil[2] * flnew[0];
+  //              flowout[idxff] -= wbil[3] * flnew[0];
+  //              #endif
+  //            }
+  //          }
+  //        }
+  //      }
+  //    }
+  //} 
   
   #pragma omp parallel for schedule(static, 100)    
   // normalize each pixel by dividing displacement by aggregated weights from all patches
