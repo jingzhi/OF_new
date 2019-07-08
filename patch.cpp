@@ -285,8 +285,8 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
 		    pc->invalid_2nd=false;
             pc->hasconverged_2nd=0; 
             pc->cnt_2nd++;
-            pc->delta_p_2nd[0] = (dxx_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum()//.mean()*validCnt;
-            pc->delta_p_2nd[1] = (dyy_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum()//.mean()*validCnt;
+            pc->delta_p_2nd[0] = (dxx_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum();//.mean()*validCnt;
+            pc->delta_p_2nd[1] = (dyy_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum();//.mean()*validCnt;
 		}
 		else{
             pc->isInlier.setOnes();

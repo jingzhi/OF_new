@@ -262,15 +262,15 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
              int i = yt*cpt->width + xt;
              absw = pweight;
              flnew = (*fl) * absw;
-             //if(valid_2nd){
-             //   float selected = (float) *pselector; ++pselector;
-             //         selected+= (float) *pselector; ++pselector;
-             //         selected+= (float) *pselector; ++pselector;
-			 //   if(selected <3){
-             //       absw = pweight_2nd;
-             //       flnew = (*fl_2nd) * absw;
-			 //   }
-			 //}
+             if(valid_2nd){
+                float selected = (float) *pselector; ++pselector;
+                      selected+= (float) *pselector; ++pselector;
+                      selected+= (float) *pselector; ++pselector;
+			    if(selected <3){
+                    absw = pweight_2nd;
+                    flnew = (*fl_2nd) * absw;
+			    }
+			 }
             we[i] += absw;
 
             #if (SELECTMODE==1)
