@@ -23,7 +23,7 @@ namespace OFC
   
   typedef __v4sf v4sf;
 
-  PatClass::PatClass(
+  PatClass::PatClass(   //Class initializer overload with definition in header
     const camparam* cpt_in,
     const camparam* cpo_in,
     const optparam* op_in,
@@ -68,6 +68,7 @@ void PatClass::InitializePatch(Eigen::Map<const Eigen::MatrixXf> * im_ao_in, Eig
   ResetPatch();
   ResetPatch_2nd();
 
+  // Extract patch on integer position, and gradients, No Bilinear interpolation
   getPatchStaticNNGrad(im_ao->data(), im_ao_dx->data(), im_ao_dy->data(), &pt_ref, &tmp, &dxx_tmp, &dyy_tmp);
   tmp_2nd=tmp;
 
@@ -114,7 +115,6 @@ void PatClass::ResetPatch()
   pc->p_in.setZero();
   pc->p_iter.setZero();
   pc->delta_p.setZero();    
-  pc->isInlier.setOnes();
 
   pc->delta_p_sqnorm = 1e-10;
   pc->delta_p_sqnorm_init = 1e-10; 
@@ -149,11 +149,9 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
 {
   pc->p_in   = p_in_arg;
   pc->p_iter = p_in_arg;
-  pc->p_iter_2nd = p_in_arg;
 
   // convert from input parameters to 2D query location(s) for patches
   paramtopt();
-  paramtopt_2nd();
 
   // save starting location, only needed for outlier check
   pc->pt_st = pc->pt_iter;
@@ -163,11 +161,8 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
       pc->pt_iter[0] > cpt->tmp_ubw || pc->pt_iter[1] > cpt->tmp_ubh)  
   {
     pc->hasconverged=1;
-    pc->hasconverged_2nd=1;
     pc->pdiff = tmp;
-    pc->pdiff_2nd = tmp_2nd;
     pc->hasoptstarted=1;
-    pc->hasoptstarted_2nd=1;
   }
   else
   {
@@ -177,12 +172,8 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
     pc->mares = 1e5;          // mean absolute residual
     pc->mares_old = 1e20; // for rate of change, keep mares from last iteration in here. Set high so that loop condition is definitely true on first iteration
     pc->hasconverged=0;
-
     OptimizeComputeErrImg();
-    OptimizeComputeErrImg_2nd();
-
     pc->hasoptstarted=1;
-    pc->hasoptstarted_2nd=1;
     pc->invalid = false;
   }
 }
@@ -199,7 +190,6 @@ void PatClass::OptimizeStart_2nd(const Eigen::Vector2f p_in_arg)
     pc->hasconverged_2nd=1;
     pc->pdiff_2nd = tmp_2nd;
     pc->hasoptstarted_2nd=1;
-    pc->invalid_2nd= true;
   }
   else
   {
@@ -215,111 +205,106 @@ void PatClass::OptimizeStart_2nd(const Eigen::Vector2f p_in_arg)
 }
 #endif
 #if (SELECTMODE==1)
-void PatClass::OptimizeIter(const Eigen::Vector2f p_in_arg, const bool untilconv)
+void PatClass::OptimizeIter(const Eigen::Vector2f p_in_arg, const bool untilconv)//p_in is either zero or from coarse scale
 #else
 void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const bool untilconv)
 #endif  
 {
-  if (!pc->hasoptstarted)
-  {
-    ResetPatch(); 
-    OptimizeStart(p_in_arg);  
-  }
-  if (!pc->hasoptstarted_2nd)
-  {
-    ResetPatch_2nd(); 
-    OptimizeStart_2nd(p_in_arg);  
-  }
+  OptimizeStart(p_in_arg);  
   int oldcnt=pc->cnt;
   int oldcnt_2nd=pc->cnt_2nd;
   Eigen::MatrixXf dx;
   Eigen::MatrixXf dy;
-  float dxx_sign,dyy_sign;
+  Eigen::MatrixXf pweight_init=pc->pweight;
+  Eigen::MatrixXf pweight_prev=pc->pweight*1.5;
+  Eigen::MatrixXf pweight_prev_2nd=pc->pweight_2nd*1.5;
   //float scale;
   int validCnt;
   pc->isInlier.setOnes();
   // optimize patch until convergence, or do only one iteration if DIS visualization is used
   while (  ! ((pc->hasconverged && pc->hasconverged_2nd) || (untilconv == false &&( pc->cnt > oldcnt))  )) 
+  //while (  ! (pc->hasconverged  || (untilconv == false &&( pc->cnt > oldcnt))  )) 
   {
     pc->cnt++;
-    //pc->isInlier.setOnes();
     // Projection onto sd_images
     #if (SELECTMODE==1)
 	    //dx =dxx_tmp.cwiseProduct(pc->pdiff);
 	    //dy =dyy_tmp.cwiseProduct(pc->pdiff);
-		//float mean_pweight=pc->pweight.array().mean();
-		//float std_thres=sqrt(((pc->pweight.array() - mean_pweight)).square().mean());
-		//cout<<"pc->diff:"<<pc->pweight.array()<<endl;
-		//cout<<"mean error"<<mean_pweight<<endl;
-		//cout<<"std error"<<std_thres<<endl;
-	    pc->isInlier =(pc->pweight.array()>20).select(0,pc->isInlier);
-	    pc->isInlier =(pc->pweight.array()<2).select(1,pc->isInlier);
-		//->diff:"<<pc->pweight.array()<<endl;
-	//	if(cpt->width <500){
-	// 	   validCnt=rand()%((int) (op->novals*0.2));
-	// 	   //validCnt=(int) (op->novals*0.2);
-	//	   for (int i = 0; i<validCnt;i++){
-	//	        pc->isInlier[rand()%(op->novals)]=0;
-	//	   }
-	//	}
-		//cout<<"dx sign:"<<dx.array().sign()<<endl;
-		//cout<<"dx mean:"<<dx.array().mean()<<endl;
-		//cout<<"iteration:"<<pc->cnt<<endl;
-		//cout<<"dx:"<<dx.array()<<endl;
-		//cout<<"dy sign:"<<dy.array().sign()<<endl;
-		//cout<<"dy mean:"<<dy.array().mean()<<endl;
-		//cout<<"dy:"<<dy.array()<<endl;
-		//cout<<"isInlier:"<<pc->isInlier.array()<<endl;
-		//cout<<"pc->diff:"<<pc->pdiff.array()<<endl;
-		//cout<<"pc->pweight:"<<pc->pweight.array()<<endl;
-        //pc->delta_p[0] = (dx.array()* pc->isInlier.array()).mean()*validCnt;
-        //pc->delta_p[1] = (dy.array()* pc->isInlier.array()).mean()*validCnt;
-        //pc->delta_p[0] = (dx.array()* pc->isInlier.array()).sum();
-        //pc->delta_p[1] = (dy.array()* pc->isInlier.array()).sum();
-        //pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()).sum();
-        //pc->delta_p[1] = (dyy_tmp.array() * pc->pdiff.array()).sum();
-		//cout<<"delta p"<<endl<<pc->delta_p<<endl;
-		validCnt=(pc->isInlier.array()==1).count();
-		if(validCnt<op->novals*0.8){
-		    //cout<<"validCnt:"<<validCnt<<endl<<endl;
-		    pc->invalid_2nd=false;
-            pc->hasconverged_2nd=0; 
-            pc->cnt_2nd++;
-            pc->delta_p_2nd[0] = (dxx_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum()//.mean()*validCnt;
-            pc->delta_p_2nd[1] = (dyy_tmp.array() * pc->pdiff_2nd.array()*(1-pc->isInlier.array().abs())).sum()//.mean()*validCnt;
-		}
-		else{
-            pc->isInlier.setOnes();
-            pc->hasconverged_2nd=1; 
-		}
+		if(pc->cnt>1){
+			if(!pc->hasoptstarted_2nd){
+		    if(pc->cnt>8){
+	        pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>1.1*pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
+			}
+	        pc->isInlier =(pc->pweight.array()>10).select(0,pc->isInlier);
+	        pc->isInlier =(pc->pweight.array()<0.5).select(1,pc->isInlier);
+			}
+	            //pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
+	            //pc->isInlier =(pc->pweight.array()<1).select(1,pc->isInlier);
+				//cout<<pc->isInlier<<endl;
+		    validCnt=(pc->isInlier.array()==1).count();
+		    if(validCnt<op->novals*0.6 && validCnt>op->novals*0.4  && !pc->hasoptstarted_2nd){
+				//cout<<"here"<<endl;
+		        pc->invalid_2nd=false;
+                OptimizeStart_2nd(p_in_arg);  
+                pc->hasconverged_2nd=0; 
+		    }
+		    else if (!pc->hasoptstarted_2nd){
+                pc->hasconverged_2nd=1; 
+		    }
+		    if(pc->hasoptstarted_2nd){
+                pc->cnt_2nd++;
+                pc->delta_p_2nd[0] = (dxx_tmp.array() * pc->pdiff_2nd.array()*((1-pc->isInlier.array()).abs())).sum();//*(op->novals/(op->novals-validCnt));
+                pc->delta_p_2nd[1] = (dyy_tmp.array() * pc->pdiff_2nd.array()*((1-pc->isInlier.array()).abs())).sum();//*(op->novals/(op->novals-validCnt));
+                //pc->Hes(0,0) = (dxx_tmp.array() * dxx_tmp.array()*((1-pc->isInlier.array()).abs())).sum();
+                //pc->Hes(0,1) = (dxx_tmp.array() * dyy_tmp.array()*((1-pc->isInlier.array()).abs())).sum();
+                //pc->Hes(1,1) = (dyy_tmp.array() * dyy_tmp.array()*((1-pc->isInlier.array()).abs())).sum();
+                //pc->Hes(1,0) = pc->Hes(0,1);
+                //if (pc->Hes.determinant()==0)
+                //{
+                //  pc->Hes(0,0)+=1e-10;
+                //  pc->Hes(1,1)+=1e-10;
+                //}
+                pc->delta_p_2nd = pc->Hes.llt().solve(pc->delta_p_2nd); // solve linear system xA=b,solve for x
+                pc->p_iter_2nd -= pc->delta_p_2nd; // update flow vector
+                paramtopt_2nd(); 
+                if ((pc->pt_st - pc->pt_iter_2nd).norm() > op->outlierthresh  // check if query patch moved more than >padval from starting location -> most likely outlier
+                    ||                  
+                    pc->pt_iter_2nd[0] < cpt->tmp_lb  || pc->pt_iter_2nd[1] < cpt->tmp_lb ||    // check patch left valid image region
+                    pc->pt_iter_2nd[0] > cpt->tmp_ubw || pc->pt_iter_2nd[1] > cpt->tmp_ubh)  
+                {
+                  pc->p_iter_2nd = pc->p_in; // reset
+                  paramtopt_2nd(); 
+                  pc->hasconverged_2nd=1;
+                  pc->hasoptstarted_2nd=1;
+                }
+                pweight_prev_2nd=pc->pweight_2nd;
+                OptimizeComputeErrImg_2nd();      // check if patch(es) moved too far from starting location, if yes, stop iteration and reset to starting location
+		    }
+        }
 
-        pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()* pc->isInlier.array()).sum();//mean()*validCnt;
-        pc->delta_p[1] = (dyy_tmp.array() * pc->pdiff.array()* pc->isInlier.array()).sum();//mean()*validCnt;
-        //pc->delta_p[0] = (dx.array()).sum();
-        //pc->delta_p[1] = (dy.array()).sum();
+		if(pc->invalid_2nd){
+           pc->delta_p[0] = (dxx_tmp.cwiseProduct(pc->pdiff)).sum();
+           pc->delta_p[1] = (dyy_tmp.cwiseProduct(pc->pdiff)).sum();
+		}
+		else
+		{
+           pc->delta_p[0] = (pc->isInlier.cwiseProduct(pc->pdiff).array()*dxx_tmp.array()).sum();//*(op->novals/validCnt);
+           pc->delta_p[1] = (pc->isInlier.cwiseProduct(pc->pdiff).array()*dyy_tmp.array()).sum();//*(op->novals/validCnt);
+                //pc->Hes(0,0) = (dxx_tmp.array() * dxx_tmp.array()*(pc->isInlier.array())).sum();
+                //pc->Hes(0,1) = (dxx_tmp.array() * dyy_tmp.array()*(pc->isInlier.array())).sum();
+                //pc->Hes(1,1) = (dyy_tmp.array() * dyy_tmp.array()*(pc->isInlier.array())).sum();
+                //pc->Hes(1,0) = pc->Hes(0,1);
+                //if (pc->Hes.determinant()==0)
+                //{
+                //  pc->Hes(0,0)+=1e-10;
+                //  pc->Hes(1,1)+=1e-10;
+                //}
+		}
     #else
-      pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()).sum();
+        pc->delta_p[0] = (dxx_tmp.array() * pc->pdiff.array()).sum();
     #endif
-	    //cout<<"Hes="<<endl<<pc->Hes<<endl;
         pc->delta_p = pc->Hes.llt().solve(pc->delta_p); // solve linear system xA=b,solve for x
-	if(!pc->invalid_2nd){
-        pc->delta_p_2nd = pc->Hes.llt().solve(pc->delta_p_2nd); // solve linear system xA=b,solve for x
-	}
-		//cout<<"delta p "<<endl<<pc->delta_p<<endl<<endl;
-		//cout<<"delta p 2nd"<<endl<<pc->delta_p_2nd<<endl<<endl;
-		//cout<<"iteration:"<<pc->cnt<<endl;
-		//cout<<"dx:"<<dx.array()<<endl;
-		//cout<<"dx sum sign:"<<dx.array().sign().sum()<<" vs "<<pc->delta_p[0]<<endl;
-	//	cout<<"dy:"<<dy.array()<<endl;
-		//cout<<"dy sum sign:"<<dy.array().sign().sum()<<" vs "<<pc->delta_p[1]<<endl;
-    
-    pc->p_iter -= pc->delta_p; // update flow vector
-	if(!pc->invalid_2nd){
-        pc->p_iter_2nd -= pc->delta_p_2nd; // update flow vector
-    }
-	//cout<<"current p"<<pc->p_iter<<endl;
-    //pc->p_iter += pc->delta_p; // update flow vector
-    
+        pc->p_iter -= pc->delta_p; // update flow vector
     #if (SELECTMODE==2) // if stereo depth
     if (cpt->camlr==0)
       pc->p_iter[0] = std::min(pc->p_iter[0],0.0f); // disparity in t can only be negative (in right image)
@@ -329,9 +314,6 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
       
     // compute patch locations based on new parameter vector
     paramtopt(); 
-	if(!pc->invalid_2nd){
-        paramtopt_2nd(); 
-	}
       
     // check if patch(es) moved too far from starting location, if yes, stop iteration and reset to starting location
     if ((pc->pt_st - pc->pt_iter).norm() > op->outlierthresh  // check if query patch moved more than >padval from starting location -> most likely outlier
@@ -344,22 +326,9 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
       pc->hasconverged=1;
       pc->hasoptstarted=1;
     }
-      // check if patch(es) moved too far from starting location, if yes, stop iteration and reset to starting location
-    if ((pc->pt_st - pc->pt_iter_2nd).norm() > op->outlierthresh  // check if query patch moved more than >padval from starting location -> most likely outlier
-        ||                  
-        pc->pt_iter_2nd[0] < cpt->tmp_lb  || pc->pt_iter_2nd[1] < cpt->tmp_lb ||    // check patch left valid image region
-        pc->pt_iter_2nd[0] > cpt->tmp_ubw || pc->pt_iter_2nd[1] > cpt->tmp_ubh)  
-    {
-      pc->invalid_2nd = true; // reset
-      pc->p_iter_2nd = pc->p_in; // reset
-      paramtopt_2nd(); 
-      pc->hasconverged_2nd=1;
-      pc->hasoptstarted_2nd=1;
-    }      
+
+    pweight_prev=pc->pweight;
     OptimizeComputeErrImg();
-	if(!pc->invalid_2nd){
-        OptimizeComputeErrImg_2nd();
-	}
   }
 }
 

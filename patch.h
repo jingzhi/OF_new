@@ -73,6 +73,9 @@ public:
 
   ~PatClass();
 
+
+  //****Public Methods Declaration of this class*****//
+
   void InitializePatch(Eigen::Map<const Eigen::MatrixXf> * im_ao_in, Eigen::Map<const Eigen::MatrixXf> * im_ao_dx_in, Eigen::Map<const Eigen::MatrixXf> * im_ao_dy_in, const Eigen::Vector2f pt_ref_in);
   void SetTargetImage(Eigen::Map<const Eigen::MatrixXf> * im_bo_in, Eigen::Map<const Eigen::MatrixXf> * im_bo_dx_in, Eigen::Map<const Eigen::MatrixXf> * im_bo_dy_in);
 
@@ -89,8 +92,11 @@ public:
   inline const Eigen::Vector2f GetPointPos() const { return pc->pt_iter; }  // get current iteration patch position (in this frame's opposite camera for OF, Depth)
   inline const bool IsValid() const { return (!pc->invalid) ; }
   inline const bool IsValid_2nd() const { return (!pc->invalid_2nd) ; }
-  inline const float GetpWeight() const {return (float) pc->pweight.array().mean()*sqrt((pc->pweight.array() - pc->pweight.array().mean()).square().sum()/(pc->pweight.array().size()-1)); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
-  inline const float GetpWeight_2nd() const {return (float) pc->pweight.array().mean()*sqrt((pc->pweight_2nd.array() -pc->pweight.array().mean()).square().sum()/(pc->pweight_2nd.array().size()-1)); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
+  inline const float GetpWeight() const {return (float) pc->pweight.array().mean()+sqrt((pc->pweight.array() - pc->pweight.array().mean()).square().sum()/(pc->pweight.array().size()-1)); }   
+  inline const float GetpWeight_2nd() const {return (float) pc->pweight_2nd.array().mean()+sqrt((pc->pweight_2nd.array() -pc->pweight_2nd.array().mean()).square().sum()/(pc->pweight_2nd.array().size()-1)); } 
+  inline const float * GetpWeightPtr() const {return (float*) pc->pweight.data(); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
+  inline const float * GetpWeightPtr_2nd() const {return (float*) pc->pweight_2nd.data(); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
+
 
   #if (SELECTMODE==1) // Optical Flow
   inline const Eigen::Vector2f*            GetParam()    const { return &(pc->p_iter); }   // get current iteration parameters
@@ -109,6 +115,7 @@ public:
   inline const float * GetpSelectorPtr() const {return (float*) pc->isInlier.data(); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
 
 private:
+  //*******Private Method declaration********//
   
   #if (SELECTMODE==1) // Optical Flow
   void OptimizeStart(const Eigen::Vector2f p_in_arg);
@@ -132,15 +139,14 @@ private:
   // Extract patch on float position with bilinear interpolation, no gradients.  
   void getPatchStaticBil(const float* img, const Eigen::Vector2f* mid_in,  Eigen::Matrix<float, Eigen::Dynamic, 1>* tmp_in_e);
   
-  Eigen::Vector2f pt_ref; // reference point location
+  //*****Private Data********//
+
+  Eigen::Vector2f pt_ref; // reference point location, pixel coordinates of mid-point of the patch
   Eigen::Matrix<float, Eigen::Dynamic, 1> tmp;
   Eigen::Matrix<float, Eigen::Dynamic, 1> tmp_2nd;
   Eigen::Matrix<float, Eigen::Dynamic, 1> dxx_tmp; // x derivative, doubles as steepest descent image for OF, Depth, SF
   Eigen::Matrix<float, Eigen::Dynamic, 1> dyy_tmp; // y derivative, doubles as steepest descent image for OF, SF
   //scratch container
-  Eigen::MatrixXf dx;
-  Eigen::MatrixXf dy;
-  
   Eigen::Map<const Eigen::MatrixXf> * im_ao, * im_ao_dx, * im_ao_dy;
   Eigen::Map<const Eigen::MatrixXf> * im_bo, * im_bo_dx, * im_bo_dy;
   
