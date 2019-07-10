@@ -161,6 +161,7 @@ void PatClass::OptimizeStart(const Eigen::Matrix<float, 1, 1> p_in_arg)
       pc->pt_iter[0] > cpt->tmp_ubw || pc->pt_iter[1] > cpt->tmp_ubh)  
   {
     pc->hasconverged=1;
+    pc->hasconverged_2nd=1;
     pc->pdiff = tmp;
     pc->hasoptstarted=1;
   }
@@ -230,20 +231,25 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
     #if (SELECTMODE==1)
 	    //dx =dxx_tmp.cwiseProduct(pc->pdiff);
 	    //dy =dyy_tmp.cwiseProduct(pc->pdiff);
-		if(pc->cnt>1){
-			if(!pc->hasoptstarted_2nd){
-		    if(pc->cnt>8){
-	        pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>1.1*pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
-			}
-	        pc->isInlier =(pc->pweight.array()>10).select(0,pc->isInlier);
-	        pc->isInlier =(pc->pweight.array()<0.5).select(1,pc->isInlier);
-			}
+        //pc->isInlier.setOnes();
+		if(pc->cnt>-1){
+		//	if(!pc->hasoptstarted_2nd){
+		    //if(pc->cnt>8){
+	        //pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>1.1*pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
+			//}
+	       // pc->isInlier =(pc->pweight.array()>20).select(0,pc->isInlier);
+		//	if(cpt->sc_fct==pow(0.5,op->sc_f)){
+		//		cout<<"here"<<endl;
+	        pc->isInlier =(pweight_init.array()<2).select(0,pc->isInlier);
+		//  }
+		//	}
 	            //pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
 	            //pc->isInlier =(pc->pweight.array()<1).select(1,pc->isInlier);
 				//cout<<pc->isInlier<<endl;
 		    validCnt=(pc->isInlier.array()==1).count();
-		    if(validCnt<op->novals*0.6 && validCnt>op->novals*0.4  && !pc->hasoptstarted_2nd){
-				//cout<<"here"<<endl;
+		    //if(validCnt<op->novals && !pc->hasoptstarted_2nd){
+		    if(validCnt<op->novals*0.8 && validCnt>op->novals*0.2  && !pc->hasoptstarted_2nd){
+				cout<<"here!"<<endl;
 		        pc->invalid_2nd=false;
                 OptimizeStart_2nd(p_in_arg);  
                 pc->hasconverged_2nd=0; 
@@ -253,8 +259,8 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
 		    }
 		    if(pc->hasoptstarted_2nd){
                 pc->cnt_2nd++;
-                pc->delta_p_2nd[0] = (dxx_tmp.array() * pc->pdiff_2nd.array()*((1-pc->isInlier.array()).abs())).sum();//*(op->novals/(op->novals-validCnt));
-                pc->delta_p_2nd[1] = (dyy_tmp.array() * pc->pdiff_2nd.array()*((1-pc->isInlier.array()).abs())).sum();//*(op->novals/(op->novals-validCnt));
+                pc->delta_p_2nd[0] = 0;//(dxx_tmp.array() * pc->pdiff_2nd.array()*((1-pc->isInlier.array()).abs())).sum();//*(op->novals/(op->novals-validCnt));
+                pc->delta_p_2nd[1] = 0;//(dyy_tmp.array() * pc->pdiff_2nd.array()*((1-pc->isInlier.array()).abs())).sum();//*(op->novals/(op->novals-validCnt));
                 //pc->Hes(0,0) = (dxx_tmp.array() * dxx_tmp.array()*((1-pc->isInlier.array()).abs())).sum();
                 //pc->Hes(0,1) = (dxx_tmp.array() * dyy_tmp.array()*((1-pc->isInlier.array()).abs())).sum();
                 //pc->Hes(1,1) = (dyy_tmp.array() * dyy_tmp.array()*((1-pc->isInlier.array()).abs())).sum();
@@ -264,7 +270,7 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
                 //  pc->Hes(0,0)+=1e-10;
                 //  pc->Hes(1,1)+=1e-10;
                 //}
-                pc->delta_p_2nd = pc->Hes.llt().solve(pc->delta_p_2nd); // solve linear system xA=b,solve for x
+                //pc->delta_p_2nd = pc->Hes.llt().solve(pc->delta_p_2nd); // solve linear system xA=b,solve for x
                 pc->p_iter_2nd -= pc->delta_p_2nd; // update flow vector
                 paramtopt_2nd(); 
                 if ((pc->pt_st - pc->pt_iter_2nd).norm() > op->outlierthresh  // check if query patch moved more than >padval from starting location -> most likely outlier
