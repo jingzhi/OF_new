@@ -231,16 +231,16 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
     #if (SELECTMODE==1)
 	    //dx =dxx_tmp.cwiseProduct(pc->pdiff);
 	    //dy =dyy_tmp.cwiseProduct(pc->pdiff);
-        //pc->isInlier.setOnes();
+        pc->isInlier.setOnes();
 		if(pc->cnt>-1){
 		//	if(!pc->hasoptstarted_2nd){
 		    //if(pc->cnt>8){
 	        //pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>1.1*pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
 			//}
-	       // pc->isInlier =(pc->pweight.array()>20).select(0,pc->isInlier);
+	        pc->isInlier =(pc->pweight.array()>10).select(0,pc->isInlier);
 		//	if(cpt->sc_fct==pow(0.5,op->sc_f)){
 		//		cout<<"here"<<endl;
-	        pc->isInlier =(pweight_init.array()<2).select(0,pc->isInlier);
+	        //pc->isInlier =(pweight_init.array()<2).select(0,pc->isInlier);
 		//  }
 		//	}
 	            //pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
@@ -248,8 +248,9 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
 				//cout<<pc->isInlier<<endl;
 		    validCnt=(pc->isInlier.array()==1).count();
 		    //if(validCnt<op->novals && !pc->hasoptstarted_2nd){
-		    if(validCnt<op->novals*0.8 && validCnt>op->novals*0.2  && !pc->hasoptstarted_2nd){
-				cout<<"here!"<<endl;
+		    //if(validCnt<op->novals*0.8 && validCnt>op->novals*0.2  && !pc->hasoptstarted_2nd){
+			if(false){
+				//cout<<"here!"<<endl;
 		        pc->invalid_2nd=false;
                 OptimizeStart_2nd(p_in_arg);  
                 pc->hasconverged_2nd=0; 

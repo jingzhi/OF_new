@@ -94,6 +94,8 @@ public:
   inline const bool IsValid_2nd() const { return (!pc->invalid_2nd) ; }
   inline const float GetpWeight() const {return (float) pc->pweight.array().mean()+sqrt((pc->pweight.array() - pc->pweight.array().mean()).square().sum()/(pc->pweight.array().size()-1)); }   
   inline const float GetpWeight_2nd() const {return (float) pc->pweight_2nd.array().mean()+sqrt((pc->pweight_2nd.array() -pc->pweight_2nd.array().mean()).square().sum()/(pc->pweight_2nd.array().size()-1)); } 
+  //inline const float GetpWeight() const {return (float) sqrt((pc->pweight.array() - pc->pweight.array().mean()).square().sum()/(pc->pweight.array().size()-1)); }   
+  //inline const float GetpWeight_2nd() const {return (float) sqrt((pc->pweight_2nd.array() -pc->pweight_2nd.array().mean()).square().sum()/(pc->pweight_2nd.array().size()-1)); } 
   inline const float * GetpWeightPtr() const {return (float*) pc->pweight.data(); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
   inline const float * GetpWeightPtr_2nd() const {return (float*) pc->pweight_2nd.data(); } // Return data pointer to image error patch, used in efficient indexing for densification in patchgrid class
 
