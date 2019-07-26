@@ -250,13 +250,13 @@ int main( int argc, char** argv )
       case 3:
         patchsz = 12; poverl = 0.75; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 1; 
+        lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 16; 
         usetvref = 1; 
         break;
       case 4:
         patchsz = 12; poverl = 0.75; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-5,0); maxiter = 128; miniter = 1; 
+        lv_l = std::max(lv_f-5,0); maxiter = 128; miniter = 128; 
         tv_innerit = 1; tv_solverit = 3; tv_sor = 1.6;
         usetvref = 1; 
         break;        
@@ -264,7 +264,7 @@ int main( int argc, char** argv )
       default:
         patchsz = 8; poverl = 0.4; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-2,0); maxiter = 12; miniter = 1; 
+        lv_l = std::max(lv_f-2,0); maxiter = 12; miniter = 12; 
         usetvref = 1; 
         break;
 
