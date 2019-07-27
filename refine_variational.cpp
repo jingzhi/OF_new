@@ -24,15 +24,15 @@ namespace OFC
   
   VarRefClass::VarRefClass(const float * im_ao_in, const float * im_ao_dx_in, const float * im_ao_dy_in, 
                             const float * im_bo_in, const float * im_bo_dx_in, const float * im_bo_dy_in,
-                           const camparam* cpt_in,const camparam* cpo_in,const optparam* op_in, float *flowout) 
+                           const camparam* cpt_in,const camparam* cpo_in,const optparam* op_in, float *flowout,const float * var_in) 
   : cpt(cpt_in), cpo(cpo_in), op(op_in)    
 {  
 
   // initialize parameters
   tvparams.alpha = op->tv_alpha;
   tvparams.beta = 0.0f;  // for matching term, not needed for us
-  tvparams.gamma = op->tv_gamma; 
-  tvparams.delta = op->tv_delta;
+  tvparams.gamma = op->tv_gamma; //grad
+  tvparams.delta = op->tv_delta;//intensity
   tvparams.n_inner_iteration = op->tv_innerit * (cpt->curr_lv+1);
   tvparams.n_solver_iteration = op->tv_solverit;//5;
   tvparams.sor_omega = op->tv_sor;  
@@ -42,11 +42,17 @@ namespace OFC
   tvparams.tmp_half_delta_over3 = tvparams.delta*0.5f/3.0f;
   tvparams.tmp_half_beta = tvparams.beta*0.5f;
   
-  float deriv_filter[3] = {0.0f, -8.0f/12.0f, 1.0f/12.0f};
+  float deriv_filter[3] = {0.0f, -8.0f/12.0f, 1.0f/12.0f}; // {1,-8,0,8,-1}/12
   deriv = convolution_new(2, deriv_filter, 0);
-  float deriv_filter_flow[2] = {0.0f, -0.5f};
+  float deriv_filter_flow[2] = {0.0f, -0.5f}; //{-0.5,0,0.5}
   deriv_flow = convolution_new(1, deriv_filter_flow, 0);  
-  
+  //2*order+1 coefs
+                              // typedef struct convolution_s
+                              //{
+                              //    int order;			/* Order of the convolution */
+                              //    float *coeffs;		/* Coefficients */
+                              //    float *coeffs_accu;	/* Accumulated coefficients */
+                              //} convolution_t; 
   // copy flow initialization into FV structs
   #if (SELECTMODE==1)
   static int noparam = 2; // Optical flow
@@ -54,9 +60,20 @@ namespace OFC
   static int noparam = 1; // Only horizontal displacements for stereo depth
   #endif
   std::vector<image_t*> flow_sep(noparam);  
+/* structure for 1-channel image */
+                             //typedef struct image_s
+                             //{
+                             //  int width;		/* Width of the image */
+                             //  int height;		/* Height of the image */
+                             //  int stride;		/* Width of the memory (width + paddind such that it is a multiple of 4) */
+                             //  float *c1;		/* Image data, aligned */
+                             //} image_t;
 
+
+  //alllocate new aligned img mem
   for (int i = 0; i < noparam; ++i )
     flow_sep[i] = image_new(cpt->width,cpt->height);
+                              //image->stride = ( (width+3) / 4 ) * 4;//multiple of 4
   
   for (int iy = 0; iy < cpt->height; ++iy)
     for (int ix = 0; ix < cpt->width; ++ix)
@@ -81,9 +98,22 @@ namespace OFC
   copyimage(im_ao_in, im_ao);
   copyimage(im_bo_in, im_bo);  
   
+  // Allocate alligned memory for variance 
+  image_t *var_aligned = image_new(cpt->width,cpt->height); 
+  // Copy data to variance structure
+  for (int iy = 0; iy < cpt->height; ++iy)
+      for (int ix = 0; ix < cpt->width; ++ix)
+      {
+        int i  = iy * cpt->width          + ix;
+        int is = iy * flow_sep[0]->stride + ix;
+        var_aligned->c1[is] = var_in[2*i]+var_in[2*i+1];
+	//printf("i:%d,is:%d \n",i,is);
+	//printf("var_u:%f,var_v:%f \n",var_in[2*i],var_in[2*i+1]);
+      }
+  
   // Call solver
   #if (SELECTMODE==1)
-  RefLevelOF(flow_sep[0], flow_sep[1], im_ao, im_bo);
+  RefLevelOF(flow_sep[0], flow_sep[1], im_ao, im_bo,var_aligned);
   #else
   RefLevelDE(flow_sep[0], im_ao, im_bo);
   #endif  
@@ -150,9 +180,9 @@ void VarRefClass::copyimage(const float* img, color_image_t * img_t)
  
 
 #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)
-void VarRefClass::RefLevelOF(image_t *wx, image_t *wy, const image_t *im1, const image_t *im2)
+void VarRefClass::RefLevelOF(image_t *wx, image_t *wy, const image_t *im1, const image_t *im2,const image_t *var_in)
 #else
-void VarRefClass::RefLevelOF(image_t *wx, image_t *wy, const color_image_t *im1, const color_image_t *im2)
+void VarRefClass::RefLevelOF(image_t *wx, image_t *wy, const color_image_t *im1, const color_image_t *im2,const image_t *var_in)
 #endif
 {
     int i_inner_iteration;
@@ -161,21 +191,39 @@ void VarRefClass::RefLevelOF(image_t *wx, image_t *wy, const color_image_t *im1,
     int stride = wx->stride;
 
 
-    image_t *du = image_new(width,height), *dv = image_new(width,height), // the flow increment
-      *mask = image_new(width,height), // mask containing 0 if a point goes outside image boundary, 1 otherwise
-      *smooth_horiz = image_new(width,height), *smooth_vert = image_new(width,height), // horiz: (i,j) contains the diffusivity coeff. from (i,j) to (i+1,j) 
-      *uu = image_new(width,height), *vv = image_new(width,height), // flow plus flow increment
-      *a11 = image_new(width,height), *a12 = image_new(width,height), *a22 = image_new(width,height), // system matrix A of Ax=b for each pixel
-      *b1 = image_new(width,height), *b2 = image_new(width,height); // system matrix b of Ax=b for each pixel  
+    image_t *du = image_new(width,height), 
+	    *dv = image_new(width,height), // the flow increment
+            *mask = image_new(width,height), // mask containing 0 if a point goes outside image boundary, 1 otherwise
+            *smooth_horiz = image_new(width,height), 
+	    *smooth_vert = image_new(width,height), // horiz: (i,j) contains the diffusivity coeff. from (i,j) to (i+1,j) 
+            *uu = image_new(width,height), 
+	    *vv = image_new(width,height), // flow plus flow increment
+            *a11 = image_new(width,height), 
+	    *a12 = image_new(width,height), 
+	    *a22 = image_new(width,height), // system matrix A of Ax=b for each pixel
+            *b1 = image_new(width,height), 
+	    *b2 = image_new(width,height); // system matrix b of Ax=b for each pixel  
       
     #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // use single band image
     image_t *w_im2 = image_new(width,height), // warped second image
-        *Ix = image_new(width,height), *Iy = image_new(width,height), *Iz = image_new(width,height), // first order derivatives
-        *Ixx = image_new(width,height), *Ixy = image_new(width,height), *Iyy = image_new(width,height), *Ixz = image_new(width,height), *Iyz = image_new(width,height); // second order derivatives
+            *Ix = image_new(width,height), 
+	    *Iy = image_new(width,height), 
+	    *Iz = image_new(width,height), // first order derivatives
+            *Ixx = image_new(width,height), 
+	    *Ixy = image_new(width,height), 
+	    *Iyy = image_new(width,height), 
+	    *Ixz = image_new(width,height), 
+	    *Iyz = image_new(width,height); // second order derivatives
     #else                                     // use RGB image
     color_image_t *w_im2 = color_image_new(width,height), // warped second image
-        *Ix = color_image_new(width,height), *Iy = color_image_new(width,height), *Iz = color_image_new(width,height), // first order derivatives
-        *Ixx = color_image_new(width,height), *Ixy = color_image_new(width,height), *Iyy = color_image_new(width,height), *Ixz = color_image_new(width,height), *Iyz = color_image_new(width,height); // second order derivatives
+                  *Ix = color_image_new(width,height), 
+		  *Iy = color_image_new(width,height), 
+		  *Iz = color_image_new(width,height), // first order derivatives
+                  *Ixx = color_image_new(width,height), 
+		  *Ixy = color_image_new(width,height), 
+		  *Iyy = color_image_new(width,height), 
+		  *Ixz = color_image_new(width,height), 
+		  *Iyz = color_image_new(width,height); // second order derivatives
     #endif
                 
     // warp second image
@@ -194,7 +242,8 @@ void VarRefClass::RefLevelOF(image_t *wx, image_t *wy, const color_image_t *im1,
         //  compute robust function and system
         compute_smoothness(smooth_horiz, smooth_vert, uu, vv, deriv_flow, tvparams.tmp_quarter_alpha );
         //compute_data_and_match(a11, a12, a22, b1, b2, mask, wx, wy, du, dv, uu, vv, Ix, Iy, Iz, Ixx, Ixy, Iyy, Ixz, Iyz, desc_weight, desc_flow_x, desc_flow_y, tvparams.tmp_half_delta_over3, tvparams.tmp_half_beta, tvparams.tmp_half_gamma_over3);
-        compute_data(a11, a12, a22, b1, b2, mask, wx, wy, du, dv, uu, vv, Ix, Iy, Iz, Ixx, Ixy, Iyy, Ixz, Iyz, tvparams.tmp_half_delta_over3, tvparams.tmp_half_beta, tvparams.tmp_half_gamma_over3);
+        //compute_data(a11, a12, a22, b1, b2, mask, wx, wy, du, dv, uu, vv, Ix, Iy, Iz, Ixx, Ixy, Iyy, Ixz, Iyz, tvparams.tmp_half_delta_over3, tvparams.tmp_half_beta, tvparams.tmp_half_gamma_over3);
+        compute_data(a11, a12, a22, b1, b2, mask, wx, wy, du, dv, uu, vv, Ix, Iy, Iz, Ixx, Ixy, Iyy, Ixz, Iyz, tvparams.tmp_half_delta_over3, tvparams.tmp_half_beta, tvparams.tmp_half_gamma_over3,var_in);
         sub_laplacian(b1, wx, smooth_horiz, smooth_vert);
         sub_laplacian(b2, wy, smooth_horiz, smooth_vert);
 
@@ -252,12 +301,14 @@ void VarRefClass::RefLevelDE(image_t *wx, const color_image_t *im1, const color_
     int height = wx->height;
     int stride = wx->stride;
 
-      image_t *du = image_new(width,height), *wy_dummy = image_new(width,height), // the flow increment
-        *mask = image_new(width,height), // mask containing 0 if a point goes outside image boundary, 1 otherwise
-        *smooth_horiz = image_new(width,height), *smooth_vert = image_new(width,height), // horiz: (i,j) contains the diffusivity coeff. from (i,j) to (i+1,j) 
-        *uu = image_new(width,height), // flow plus flow increment
-        *a11 = image_new(width,height), // system matrix A of Ax=b for each pixel
-        *b1 = image_new(width,height); // system matrix b of Ax=b for each pixel  
+      image_t *du = image_new(width,height), 
+	      *wy_dummy = image_new(width,height), // the flow increment
+              *mask = image_new(width,height), // mask containing 0 if a point goes outside image boundary, 1 otherwise
+              *smooth_horiz = image_new(width,height), 
+	      *smooth_vert = image_new(width,height), // horiz: (i,j) contains the diffusivity coeff. from (i,j) to (i+1,j) 
+              *uu = image_new(width,height), // flow plus flow increment
+              *a11 = image_new(width,height), // system matrix A of Ax=b for each pixel
+              *b1 = image_new(width,height); // system matrix b of Ax=b for each pixel  
         
       image_erase(wy_dummy);
 	
@@ -267,8 +318,14 @@ void VarRefClass::RefLevelDE(image_t *wx, const color_image_t *im1, const color_
           *Ixx = image_new(width,height), *Ixy = image_new(width,height), *Iyy = image_new(width,height), *Ixz = image_new(width,height), *Iyz = image_new(width,height); // second order derivatives
       #else                                     // use RGB image
       color_image_t *w_im2 = color_image_new(width,height), // warped second image
-          *Ix = color_image_new(width,height), *Iy = color_image_new(width,height), *Iz = color_image_new(width,height), // first order derivatives
-          *Ixx = color_image_new(width,height), *Ixy = color_image_new(width,height), *Iyy = color_image_new(width,height), *Ixz = color_image_new(width,height), *Iyz = color_image_new(width,height); // second order derivatives
+                    *Ix = color_image_new(width,height), 
+		    *Iy = color_image_new(width,height), 
+		    *Iz = color_image_new(width,height), // first order derivatives
+                    *Ixx = color_image_new(width,height), 
+		    *Ixy = color_image_new(width,height), 
+		    *Iyy = color_image_new(width,height), 
+		    *Ixz = color_image_new(width,height), 
+		    *Iyz = color_image_new(width,height); // second order derivatives
       #endif
           
       // warp second image

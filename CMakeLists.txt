@@ -21,11 +21,11 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 
 set(CODEFILES run_dense.cpp oflow.cpp patch.cpp patchgrid.cpp refine_variational.cpp FDF1.0.1/image.c FDF1.0.1/opticalflow_aux.c FDF1.0.1/solver.c)
 
-# GrayScale, Optical Flow
-add_executable (run_OF_INT ${CODEFILES})
-set_target_properties (run_OF_INT PROPERTIES COMPILE_DEFINITIONS "SELECTMODE=1")
-set_property(TARGET run_OF_INT APPEND PROPERTY COMPILE_DEFINITIONS "SELECTCHANNEL=1") # use grey-valued image
-TARGET_LINK_LIBRARIES(run_OF_INT ${OpenCV_LIBS})
+## GrayScale, Optical Flow
+#add_executable (run_OF_INT ${CODEFILES})
+#set_target_properties (run_OF_INT PROPERTIES COMPILE_DEFINITIONS "SELECTMODE=1")
+#set_property(TARGET run_OF_INT APPEND PROPERTY COMPILE_DEFINITIONS "SELECTCHANNEL=1") # use grey-valued image
+#TARGET_LINK_LIBRARIES(run_OF_INT ${OpenCV_LIBS})
 
 # RGB, Optical Flow
 add_executable (run_OF_RGB ${CODEFILES})

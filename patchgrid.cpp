@@ -29,7 +29,7 @@ using namespace cv;
 
 namespace OFC
 {
-    
+
   PatGridClass::PatGridClass(
     const camparam* cpt_in,
     const camparam* cpo_in,
@@ -64,7 +64,7 @@ namespace OFC
   for (int x = 0; x < nopw; ++x)
   {
     for (int y = 0; y < noph; ++y)
-    {
+      {
       int i = x*noph + y;
 
       pt_ref[i][0] = x * steps + offsetw;
@@ -73,9 +73,9 @@ namespace OFC
       
       pat.push_back(new OFC::PatClass(cpt, cpo, op, patchid));    
       patchid++;
+      }
     }
   }
-}
 
 PatGridClass::~PatGridClass()
 {
@@ -112,7 +112,7 @@ void PatGridClass::InitializeGrid(const float * im_ao_in, const float * im_ao_dx
   for (int i = 0; i < nopatches; ++i)
   {
     pat[i]->InitializePatch(im_ao_eg, im_ao_dx_eg, im_ao_dy_eg, pt_ref[i]);
-    p_init[i].setZero();    
+    p_init[i].setZero();    //set starting param of query patch to be zero
   }
 
 }
@@ -221,12 +221,12 @@ float normal_pdf(float x, float m, float s)
     return (inv_sqrt_2pi / s) * std::exp(-0.5f * a * a);
 }
 
-void PatGridClass::AggregateFlowDense(float *flowout) const
+void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
 {
   float* we = new float[cpt->width * cpt->height];
   int array_size=cpt->width * cpt->height;
   vector<Point3f>* all_flow = new vector<Point3f> [array_size];
-  float* varout = new float[cpt->width * cpt->height*op->nop];
+  //float* varout = new float[cpt->width * cpt->height*op->nop];
 
   memset(flowout, 0, sizeof(float) * (op->nop * cpt->width * cpt->height) );
   memset(varout, 0, sizeof(float) * (op->nop * cpt->width * cpt->height) );
@@ -485,7 +485,7 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
 //END of ORIGINAL flow
 
 // pixel-wise std
-  if(false){
+  if(true){
       float conflict_cnt=0;
 	  //calculate pixel wise variance
       for (int j =0;j<cpt->height;j++){

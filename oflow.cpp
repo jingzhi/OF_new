@@ -43,11 +43,11 @@ namespace OFC
                   const float  dp_thresh_in,
                   const float  dr_thresh_in,
                   const float res_thresh_in,            
-                  const int p_samp_s_in,
-                  const float patove_in,
+                  const int p_samp_s_in,//patch size
+                  const float patove_in,//patch overlap rate in %
                   const bool usefbcon_in, 
-                  const int costfct_in,                   
-                  const int noc_in,
+                  const int costfct_in,//cost function                   
+                  const int noc_in,//no of channel
                   const int patnorm_in, 
                   const bool usetvref_in,
                   const float tv_alpha_in,
@@ -133,6 +133,8 @@ namespace OFC
   vector<OFC::PatGridClass*> grid_bw(op.noscales); // grid for backward OF computation, only needed if 'usefbcon' is set to 1.
   vector<float*> flow_fw(op.noscales);
   vector<float*> flow_bw(op.noscales);
+  vector<float*> var_fw(op.noscales);
+  vector<float*> var_bw(op.noscales);
   cpl.resize(op.noscales);
   cpr.resize(op.noscales);
   for (int sl=op.sc_f; sl>=op.sc_l; --sl) 
@@ -141,7 +143,7 @@ namespace OFC
 
     float sc_fct = pow(2,-sl); // scaling factor at current scale
     cpl[i].sc_fct = sc_fct;
-    cpl[i].height = height_in * sc_fct;
+    cpl[i].height = height_in * sc_fct; //height_in = original image height
     cpl[i].width = width_in * sc_fct;
     cpl[i].imgpadding = imgpadding_in;
     cpl[i].tmp_lb = -(float)op.p_samp_s/2; 
@@ -158,6 +160,7 @@ namespace OFC
     
     flow_fw[i]   = new float[op.nop * cpl[i].width * cpl[i].height]; 
     grid_fw[i]   = new OFC::PatGridClass(&(cpl[i]), &(cpr[i]), &op);
+    var_fw[i]   = new float[op.nop * cpl[i].width * cpl[i].height]; 
    
     if (op.usefbcon) // for merging forward and backward flow 
     {
@@ -167,6 +170,7 @@ namespace OFC
       // Make grids known to each other, necessary for AggregateFlowDense();
       grid_fw[i]->SetComplGrid( grid_bw[i] );
       grid_bw[i]->SetComplGrid( grid_fw[i] ); 
+      var_bw[i]   = new float[op.nop * cpl[i].width * cpl[i].height]; 
     }
   }
   
@@ -272,10 +276,10 @@ namespace OFC
     if (sl == op.sc_l)
       tmp_ptr = outflow;
     
-    grid_fw[ii]->AggregateFlowDense(tmp_ptr);
+    grid_fw[ii]->AggregateFlowDense(tmp_ptr,var_fw[ii]);
     
     if (op.usefbcon && sl > op.sc_l )  // skip at last scale, backward flow no longer needed
-      grid_bw[ii]->AggregateFlowDense(flow_bw[ii]);
+      grid_bw[ii]->AggregateFlowDense(flow_bw[ii],var_bw[ii]);
       
     
     // Timing, Densification
@@ -294,12 +298,12 @@ namespace OFC
     {
       OFC::VarRefClass varref_fw(im_ao[sl], im_ao_dx[sl], im_ao_dy[sl], 
                                 im_bo[sl], im_bo_dx[sl], im_bo_dy[sl]
-                                ,&(cpl[ii]), &(cpr[ii]), &op, tmp_ptr);
+                                ,&(cpl[ii]), &(cpr[ii]), &op, tmp_ptr,var_fw[ii]);
       
       if (op.usefbcon  && sl > op.sc_l )    // skip at last scale, backward flow no longer needed
           OFC::VarRefClass varref_bw(im_bo[sl], im_bo_dx[sl], im_bo_dy[sl], 
                                     im_ao[sl], im_ao_dx[sl], im_ao_dy[sl]
-                                    ,&(cpr[ii]), &(cpl[ii]), &op, flow_bw[ii]);
+                                    ,&(cpr[ii]), &(cpl[ii]), &op, flow_bw[ii],var_bw[ii]);
     }
     
     // Timing, Variational Refinement

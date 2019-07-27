@@ -251,6 +251,7 @@ int main( int argc, char** argv )
         patchsz = 12; poverl = 0.75; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
         lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 16; 
+        tv_innerit = 10; tv_solverit = 15; tv_sor = 1.6;
         usetvref = 1; 
         break;
       case 4:

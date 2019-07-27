@@ -26,12 +26,12 @@ void image_warp(color_image_t *dst, image_t *mask, const color_image_t *src, con
     {
         for(i=0 ; i<src->width ; i++,offset++)
         {
-	        xx = i+wx->c1[offset];
-	        yy = j+wy->c1[offset];
-	        x = floor(xx);
-	        y = floor(yy);
-	        dx = xx-x;
-	        dy = yy-y;
+	        xx = i+wx->c1[offset];//float current x +flow = new x position
+	        yy = j+wy->c1[offset];//float new y position
+	        x = floor(xx);//integer new x
+	        y = floor(yy);//integer new y
+	        dx = xx-x;//rounding error x
+	        dy = yy-y;//rounding error y
 	        mask->c1[offset] = (xx>=0 && xx<=src->width-1 && yy>=0 && yy<=src->height-1);
 	        x1 = MINMAX_TA(x,src->width);
 	        x2 = MINMAX_TA(x+1,src->width);
@@ -307,15 +307,15 @@ void compute_data_and_match(image_t *a11, image_t *a12, image_t *a22, image_t *b
    a11 a12 a22 represents the 2x2 diagonal matrix, b1 and b2 the right hand side
    other (color) images are input */
 #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // use single band image_delete
-void compute_data(image_t *a11, image_t *a12, image_t *a22, image_t *b1, image_t *b2, image_t *mask, image_t *wx, image_t *wy, image_t *du, image_t *dv, image_t *uu, image_t *vv, image_t *Ix, image_t *Iy, image_t *Iz, image_t *Ixx, image_t *Ixy, image_t *Iyy, image_t *Ixz, image_t *Iyz, const float half_delta_over3, const float half_beta, const float half_gamma_over3)
+void compute_data(image_t *a11, image_t *a12, image_t *a22, image_t *b1, image_t *b2, image_t *mask, image_t *wx, image_t *wy, image_t *du, image_t *dv, image_t *uu, image_t *vv, image_t *Ix, image_t *Iy, image_t *Iz, image_t *Ixx, image_t *Ixy, image_t *Iyy, image_t *Ixz, image_t *Iyz, const float half_delta_over3, const float half_beta, const float half_gamma_over3,const image_t *var_in)
 #else
-void compute_data(image_t *a11, image_t *a12, image_t *a22, image_t *b1, image_t *b2, image_t *mask, image_t *wx, image_t *wy, image_t *du, image_t *dv, image_t *uu, image_t *vv, color_image_t *Ix, color_image_t *Iy, color_image_t *Iz, color_image_t *Ixx, color_image_t *Ixy, color_image_t *Iyy, color_image_t *Ixz, color_image_t *Iyz, const float half_delta_over3, const float half_beta, const float half_gamma_over3)
+void compute_data(image_t *a11, image_t *a12, image_t *a22, image_t *b1, image_t *b2, image_t *mask, image_t *wx, image_t *wy, image_t *du, image_t *dv, image_t *uu, image_t *vv, color_image_t *Ix, color_image_t *Iy, color_image_t *Iz, color_image_t *Ixx, color_image_t *Ixy, color_image_t *Iyy, color_image_t *Ixz, color_image_t *Iyz, const float half_delta_over3, const float half_beta, const float half_gamma_over3,const image_t *var_in)
 #endif
 {
     const v4sf dnorm = {datanorm, datanorm, datanorm, datanorm};
-    const v4sf hdover3 = {half_delta_over3, half_delta_over3, half_delta_over3, half_delta_over3};
+    //const v4sf hdover3 = {half_delta_over3, half_delta_over3, half_delta_over3, half_delta_over3};
     const v4sf epscolor = {epsilon_color, epsilon_color, epsilon_color, epsilon_color};
-    const v4sf hgover3 = {half_gamma_over3, half_gamma_over3, half_gamma_over3, half_gamma_over3};
+    //const v4sf hgover3 = {half_gamma_over3, half_gamma_over3, half_gamma_over3, half_gamma_over3};
     const v4sf epsgrad = {epsilon_grad, epsilon_grad, epsilon_grad, epsilon_grad};
     //const v4sf hbeta = {half_beta,half_beta,half_beta,half_beta};
     //const v4sf epsdesc = {epsilon_desc,epsilon_desc,epsilon_desc,epsilon_desc};
@@ -339,12 +339,52 @@ void compute_data(image_t *a11, image_t *a12, image_t *a22, image_t *b1, image_t
     memset(b2->c1 , 0, sizeof(float)*uu->height*uu->stride);
               
     int i;
+    //printf("uu->height:%d,; uu->stride/4: %d \n",uu->height,uu->stride/4);
     for(i = 0 ; i<uu->height*uu->stride/4 ; i++){
         v4sf tmp, tmp2, n1, n2;
 	#if (SELECTCHANNEL==3)
 	v4sf tmp3, tmp4, tmp5, tmp6, n3, n4, n5, n6;
 	#endif
         // dpsi color
+        float delta_drop_out[4]={1.0f,1.0f,1.0f,1.0f};//(rand()/RAND_MAX)>0.01;
+        float gamma_drop_out[4]={1.0f,1.0f,1.0f,1.0f};//(rand()/RAND_MAX)>0.01;
+        //printf("i:%d,; imod4: %d \n",i,i%4);
+	
+	//if(uu->height < 400){
+	//    int j;
+	//    for(j=0;j<4;j++){
+	//    delta_drop_out[j]=1;//(rand()/RAND_MAX)>0.001;
+	//    delta_drop_out[j]=1;//(rand()/RAND_MAX)>0.001;
+	//    }
+	//}
+	if(uu->height < 1000000.0){
+	    int j;
+	    for(j=0;j<4;j++){
+	    	//printf("var:%f\n",var_in->c1[i*4+j]);
+	        if(var_in->c1[i*4+j]>4 ){
+	            if((double) rand()/ (double) RAND_MAX > 0.1){
+	              delta_drop_out[j]=0.01;//(rand()/RAND_MAX)>0.001;
+	            //};
+	            //if((double) rand()/ (double) RAND_MAX > 0.01){
+	              gamma_drop_out[j]=0.01;//(rand()/RAND_MAX)>0.001;
+	            };
+	        }
+	        else{
+	            if((double) rand()/ (double) RAND_MAX > 0.95){
+	              delta_drop_out[j]=0.5;//(rand()/RAND_MAX)>0.001;
+	            //};
+	            //if((double) rand()/ (double) RAND_MAX <0.05){
+	              gamma_drop_out[j]=0.5;//(rand()/RAND_MAX)>0.001;
+	            }
+	        }
+	    }
+	}
+        
+
+        v4sf hdover3 = {delta_drop_out[0]*half_delta_over3,delta_drop_out[1]*half_delta_over3,delta_drop_out[2]*half_delta_over3,delta_drop_out[3]*half_delta_over3};
+        v4sf hgover3 = {gamma_drop_out[0]*half_gamma_over3,gamma_drop_out[1]*half_gamma_over3,gamma_drop_out[2]*half_gamma_over3,gamma_drop_out[3]*half_gamma_over3};
+        //printf("i:%d,; hdover3: %f,%f,%f,%f \n",i,hdover3[0],hdover3[1],hdover3[2],hdover3[3]);
+        //printf("i:%d,; hgover3: %f,%f,%f,%f \n",i,hgover3[0],hgover3[1],hgover3[2],hgover3[3]);
         if(half_delta_over3){
             tmp  = *iz1p + (*ix1p)*(*dup) + (*iy1p)*(*dvp);
             n1 = (*ix1p) * (*ix1p) + (*iy1p) * (*iy1p) + dnorm;

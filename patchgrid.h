@@ -26,7 +26,7 @@ public:
   void SetTargetImage(const float * im_bo_in, const float * im_bo_dx_in, const float * im_bo_dy_in);
   void InitializeFromCoarserOF(const float * flow_prev);
   
-  void AggregateFlowDense(float *flowout) const;
+  void AggregateFlowDense(float *flowout, float *varout) const;
   
   // Optimizes grid to convergence of each patch
   void Optimize(); 

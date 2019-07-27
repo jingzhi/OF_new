@@ -36,7 +36,8 @@ class VarRefClass
 public:
   VarRefClass(const float * im_ao_in, const float * im_ao_dx_in, const float * im_ao_dy_in, // expects #sc_f_in pointers to float arrays for images and gradients. 
               const float * im_bo_in, const float * im_bo_dx_in, const float * im_bo_dy_in,
-              const camparam* cpt_in, const camparam* cpo_in,const optparam* op_in, float *flowout);
+              const camparam* cpt_in, const camparam* cpo_in,const optparam* op_in, float *flowout, const float * var_in);
+  
   ~VarRefClass();  
 
 private:
@@ -46,11 +47,11 @@ private:
 
   #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)    // Intensity image, or gradient image
   void copyimage(const float* img, image_t * img_t);
-  void RefLevelOF(image_t *wx, image_t *wy, const image_t *im1, const image_t *im2);
+  void RefLevelOF(image_t *wx, image_t *wy, const image_t *im1, const image_t *im2,const float* var_in);
   void RefLevelDE(image_t *wx, const image_t *im1, const image_t *im2);
   #else // 3-Color RGB image
   void copyimage(const float* img, color_image_t * img_t);
-  void RefLevelOF(image_t *wx, image_t *wy, const color_image_t *im1, const color_image_t *im2);
+  void RefLevelOF(image_t *wx, image_t *wy, const color_image_t *im1, const color_image_t *im2,const image_t * var_in);
   void RefLevelDE(image_t *wx, const color_image_t *im1, const color_image_t *im2);    
   #endif
   
