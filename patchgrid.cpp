@@ -220,15 +220,13 @@ float normal_pdf(float x, float m, float s)
 
     return (inv_sqrt_2pi / s) * std::exp(-0.5f * a * a);
 }
-//Densification
-void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
+
+void PatGridClass::AggregateFlowDense(float *flowout) const
 {
   float* we = new float[cpt->width * cpt->height];
   int array_size=cpt->width * cpt->height;
-  //vector<Point>* all_flow = new vector<Point> [array_size];
   vector<Point3f>* all_flow = new vector<Point3f> [array_size];
-  float* point_valid_flag = new float[cpt->width * cpt->height];
-  bool bilateral=true;
+  float* varout = new float[cpt->width * cpt->height*op->nop];
 
   memset(flowout, 0, sizeof(float) * (op->nop * cpt->width * cpt->height) );
   memset(varout, 0, sizeof(float) * (op->nop * cpt->width * cpt->height) );
@@ -276,7 +274,7 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
           int yt = (y + pt_ref[ip][1]);
           int xt = (x + pt_ref[ip][0]);
 		  float absw;
-		  bool std_weighting=true;
+		  bool std_weighting=false;
 		  bool bipolar=false;
 
           if (xt >= 0 && yt >= 0 && xt < cpt->width && yt < cpt->height)
@@ -334,12 +332,11 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
                  flnew = (*fl) * absw;
 			 }
             we[i] += absw;
-	        if((*fl)[0]!=0 && (*fl)[1]!=0){
+	    if((*fl)[0]!=0 && (*fl)[1]!=0){
 		    //cout<<"fl[0]"<<fl[0]<<endl;
 		    //cout<<"fl[1]"<<fl[1]<<endl;
              all_flow[i].push_back(Point3f((*fl)[0],(*fl)[1],1.0f/absw));
-            //patch_error_std[i]=patch_homo_weight;
-	        }
+	    }
             #if (SELECTMODE==1)
             flowout[2*i]   += flnew[0];
             flowout[2*i+1] += flnew[1];
@@ -488,7 +485,7 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
 //END of ORIGINAL flow
 
 // pixel-wise std
-  if(true){
+  if(false){
       float conflict_cnt=0;
 	  //calculate pixel wise variance
       for (int j =0;j<cpt->height;j++){
@@ -508,13 +505,12 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
       	    }
 	  		//Calculate variance
       	    if(all_flow[index].size()==0){//No valid candidate from inverse search
-                  point_valid_flag[index]=0;  
-      	        float margin=3;
+      	        float margin=10;
                   varout[2*index]   = margin;//*margin;
                   varout[2*index+1] = margin;//*margin;
       	    } 
       	    else if(all_flow[index].size()<=2){//less than 5 valid candidates per pixel
-      	        float margin=1;
+      	        float margin=10;
                   varout[2*index]   = margin;//*margin;
                   varout[2*index+1] = margin;//*margin;
       	    }
@@ -562,12 +558,12 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
 
 
     // bilateral param
-    int k_size =5;
-    int half_k=5;
-    float sigma=3;
+    int k_size =1;
+    int half_k=1;
+    float sigma=1;
     float mu=0;
-    float thres=0.5;
-    if(true){
+    float thres=3;
+    if(false){
     // row-wise bilateral
         for (int j =0;j<cpt->height;j++){
         //left to right
@@ -580,26 +576,32 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
                  for(int k=-half_k;k<=half_k;k++){
                     int index_q=index_p+k;
         	        float G_spatial=normal_pdf(k,mu,sigma);
-        	        float G_value_u=normal_pdf(flowout[2*index_q],mu,sigma);
+        	        float G_value_u=normal_pdf(flowout[2*index_q]-flowout[2*index_p],mu,sigma);
         	        float G_std_u;
-        	        float G_value_v=normal_pdf(flowout[2*index_q+1],mu,sigma);
+        	        float G_value_v=normal_pdf(flowout[2*index_q+1]-flowout[2*index_p+1],mu,sigma);
         	        float G_std_v;
         	        if(varout[2*index_q]>thres){
-        	            G_std_u=normal_pdf(100,mu,sigma);
+        	            G_std_u=normal_pdf(10,mu,sigma);
+						//cout<<"11G_value_u:"<<G_value_u<<endl;
+						//cout<<"11G_std_u:"<<G_std_u<<endl<<endl;
+						//cout<<"11G_spatial:"<<G_spatial<<endl<<endl;
         	        }
         	        else{
                         G_std_u=normal_pdf(varout[2*index_q],mu,sigma);
+						//cout<<"G_value_u:"<<G_value_u<<endl;
+						//cout<<"G_std_u:"<<G_std_u<<endl<<endl;
+						//cout<<"G_spatial:"<<G_spatial<<endl<<endl;
         	        }
         	        if(varout[2*index_q+1]>thres){
-        	            G_std_v=normal_pdf(100,mu,sigma);
+        	            G_std_v=normal_pdf(10,mu,sigma);
         	        }
         	        else{
                             G_std_v=normal_pdf(varout[2*index_q+1],mu,sigma);
         	        }
-        	        weight_u += G_spatial*G_std_u;
-        	        weight_v += G_spatial*G_std_v;
-        	        smoothed_u += flowout[2*index_q]  *G_spatial*G_std_u;
-        	        smoothed_v += flowout[2*index_q+1]*G_spatial*G_std_v;
+        	        weight_u += G_spatial*G_std_u*G_value_u;
+        	        weight_v += G_spatial*G_std_v*G_value_v;
+        	        smoothed_u += flowout[2*index_q]  *G_spatial*G_std_u*G_value_u;
+        	        smoothed_v += flowout[2*index_q+1]*G_spatial*G_std_v*G_value_v;
                 }
                 if(weight_u!=0)
                 flowout[2*index_p] =smoothed_u/weight_u;
@@ -654,26 +656,26 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
                 for(int k=-half_k;k<=half_k;k++){
                     int index_q=index_p+k;
             	    float G_spatial=normal_pdf(k,mu,sigma);
-            	    float G_value_u=normal_pdf(flowout[2*index_q],mu,sigma);
-            	    float G_std_u;
-            	    float G_value_v=normal_pdf(flowout[2*index_q+1],mu,sigma);
+        	        float G_value_u=normal_pdf(flowout[2*index_q]-flowout[2*index_p],mu,sigma);
+        	        float G_std_u;
+        	        float G_value_v=normal_pdf(flowout[2*index_q+1]-flowout[2*index_p+1],mu,sigma);
             	    float G_std_v;
             	    if(varout[2*index_q]>thres){
-            	        G_std_u=normal_pdf(100,mu,sigma);
+            	        G_std_u=normal_pdf(10,mu,sigma);
             	    }
             	    else{
                         G_std_u=normal_pdf(varout[2*index_q],mu,sigma);
             	    }
             	    if(varout[2*index_q+1]>thres){
-            	        G_std_v=normal_pdf(100,mu,sigma);
+            	        G_std_v=normal_pdf(10,mu,sigma);
             	    }
             	    else{
                         G_std_v=normal_pdf(varout[2*index_q+1],mu,sigma);
             	    }
-            	    weight_u += G_spatial*G_std_u;
-            	    weight_v += G_spatial*G_std_v;
-            	    smoothed_u += flowout[2*index_q]  *G_spatial*G_std_u;
-            	    smoothed_v += flowout[2*index_q+1]*G_spatial*G_std_v;
+            	    weight_u += G_spatial*G_std_u*G_value_u;
+            	    weight_v += G_spatial*G_std_v*G_value_v;
+            	    smoothed_u += flowout[2*index_q]  *G_spatial*G_std_u*G_value_u;
+            	    smoothed_v += flowout[2*index_q+1]*G_spatial*G_std_v*G_value_v;
                 }
                 if(weight_u!=0)
                     flowout[2*index_p] =smoothed_u/weight_u;
