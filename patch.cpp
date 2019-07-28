@@ -221,8 +221,8 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
   Eigen::MatrixXf pweight_prev_2nd=pc->pweight_2nd*1.5;
   //float scale;
   int validCnt;
-  float sigma=3;
-  float sigma_1=3;
+  float sigma=10;
+  float sigma_1=5;
   pc->isInlier.setOnes();
   // optimize patch until convergence, or do only one iteration if DIS visualization is used
   while (  ! ((pc->hasconverged && pc->hasconverged_2nd) || (untilconv == false &&( pc->cnt > oldcnt))  )) 
@@ -233,7 +233,7 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
     #if (SELECTMODE==1)
 	    //dx =dxx_tmp.cwiseProduct(pc->pdiff);
 	    //dy =dyy_tmp.cwiseProduct(pc->pdiff);
-        //pc->isInlier.setOnes();
+        pc->isInlier.setOnes();
 		if(pc->cnt>-1){
 		//	if(!pc->hasoptstarted_2nd){
 		    //if(pc->cnt>8){
@@ -242,7 +242,7 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
 	        pc->isInlier =(pc->pweight.array()>10).select(0,pc->isInlier);
 		//	if(cpt->sc_fct==pow(0.5,op->sc_f)){
 		//		cout<<"here"<<endl;
-	        pc->isInlier =(pc->pweight.array()<0.5).select(1,pc->isInlier);
+	        //pc->isInlier =(pc->pweight.array()<0.5).select(1,pc->isInlier);
 		//  }
 		//	}
 	            //pc->isInlier =(pc->pweight.array()*pc->isInlier.array()>pweight_prev.array()*pc->isInlier.array()).select(0,pc->isInlier);
@@ -291,7 +291,7 @@ void PatClass::OptimizeIter(const Eigen::Matrix<float, 1, 1> p_in_arg, const boo
 		    }
         }
 
-		if(pc->invalid_2nd){
+		if(false&&pc->invalid_2nd){
            pc->delta_p[0] = (dxx_tmp.cwiseProduct(pc->pdiff)).sum();
            pc->delta_p[1] = (dyy_tmp.cwiseProduct(pc->pdiff)).sum();
 		}
