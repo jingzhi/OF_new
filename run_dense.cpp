@@ -241,7 +241,7 @@ int main( int argc, char** argv )
     switch (sel_oppoint)
     {
       case 1:
-        patchsz = 8; poverl =0.3 ;
+        patchsz = 8; poverl =0.35 ;
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
         //lv_f = 3;//AutoFirstScaleSelect(width_org, fratio, patchsz);
         lv_l = std::max(lv_f-2,0); maxiter = 16; miniter = 16; 
@@ -251,14 +251,13 @@ int main( int argc, char** argv )
         patchsz = 12; poverl = 0.75; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
         lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 16; 
-        tv_innerit = 10; tv_solverit = 15; tv_sor = 1.6;
         usetvref = 1; 
         break;
       case 4:
-        patchsz = 12; poverl = 0.75; 
+        patchsz = 12; poverl = 0.5; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-5,0); maxiter = 128; miniter = 128; 
-        tv_innerit = 1; tv_solverit = 3; tv_sor = 1.6;
+        lv_l = std::max(lv_f-5,0); maxiter = 128; miniter = 64; 
+        tv_innerit = 10; tv_solverit = 15; tv_sor = 1.6;
         usetvref = 1; 
         break;        
       case 2:

@@ -274,8 +274,8 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
           int yt = (y + pt_ref[ip][1]);
           int xt = (x + pt_ref[ip][0]);
 		  float absw;
-		  bool std_weighting=false;
-		  bool bipolar=false;
+		  bool std_weighting=true;
+		  bool bipolar=true;
 
           if (xt >= 0 && yt >= 0 && xt < cpt->width && yt < cpt->height)
           {
@@ -563,7 +563,7 @@ void PatGridClass::AggregateFlowDense(float *flowout, float * varout) const
     float sigma=1;
     float mu=0;
     float thres=3;
-    if(false){
+    if(true){
     // row-wise bilateral
         for (int j =0;j<cpt->height;j++){
         //left to right
