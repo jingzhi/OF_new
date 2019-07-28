@@ -261,7 +261,7 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
           int xt = (x + pt_ref[ip][0]);
 		  float absw;
 		  bool std_weighting=false;
-		  bool bipolar=false;
+		  bool bipolar=true;
 
           if (xt >= 0 && yt >= 0 && xt < cpt->width && yt < cpt->height)
           {
@@ -291,10 +291,17 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
                       absw = (float)(std::max(op->minerrval  ,*pweight_2nd)); ++pweight_2nd; ++pweight;
                       absw+= (float)(std::max(op->minerrval  ,*pweight_2nd)); ++pweight_2nd; ++pweight;
                       absw+= (float)(std::max(op->minerrval  ,*pweight_2nd)); ++pweight_2nd; ++pweight;
-                      absw = 1.0f / absw;
+                      absw = 1.0f / std::max(absw,op->minerrval);
                       #endif
 			      }else{
-                      absw = pweight_std_2nd;
+                      #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // single channel/gradient image 
+                      absw = 1.0f /  (float)(std::max(op->minerrval  ,*pweight_2nd+pweight_std_2nd));++pweight_2nd;++pweight;
+                      #else  // RGB image
+                      absw = (float)(std::max(op->minerrval  ,*pweight_2nd+pweight_std_2nd)); ++pweight_2nd; ++pweight;
+                      absw+= (float)(std::max(op->minerrval  ,*pweight_2nd+pweight_std_2nd)); ++pweight_2nd; ++pweight;
+                      absw+= (float)(std::max(op->minerrval  ,*pweight_2nd+pweight_std_2nd)); ++pweight_2nd; ++pweight;
+                      absw = 1.0f / std::max(absw,op->minerrval);
+                      #endif
 			      }
                   flnew = (*fl_2nd) * absw;
 			 }
@@ -306,14 +313,18 @@ void PatGridClass::AggregateFlowDense(float *flowout) const
                      absw = (float)(std::max(op->minerrval  ,*pweight)); ++pweight; ++pweight_2nd;
                      absw+= (float)(std::max(op->minerrval  ,*pweight)); ++pweight; ++pweight_2nd;
                      absw+= (float)(std::max(op->minerrval  ,*pweight)); ++pweight; ++pweight_2nd;
-                     absw = 1.0f / absw;
+                     absw = 1.0f /std::max(absw,op->minerrval);
                      #endif
 			     }else{                     
+                     #if (SELECTCHANNEL==1 | SELECTCHANNEL==2)  // single channel/gradient image 
+                     absw = 1.0f /  (float)(std::max(op->minerrval  ,*pweight+pweight_std));++pweight;++pweight_2nd;
+                     #else  // RGB image
 					 absw = (float)(std::max(op->minerrval  ,*pweight+pweight_std)); ++pweight; ++pweight_2nd;
                      absw+= (float)(std::max(op->minerrval  ,*pweight+pweight_std)); ++pweight; ++pweight_2nd;
                      absw+= (float)(std::max(op->minerrval  ,*pweight+pweight_std)); ++pweight; ++pweight_2nd;
                      //absw = pweight_std;
-                     absw = 1.0f / absw;
+                     absw = 1.0f / std::max(absw,op->minerrval);
+                     #endif
 			     }
                  flnew = (*fl) * absw;
 			 }
