@@ -248,9 +248,10 @@ int main( int argc, char** argv )
         usetvref = 0; 
         break;
       case 3:
-        patchsz = 12; poverl = 0.75; 
+        patchsz = 12; poverl = 0.7; 
         lv_f = AutoFirstScaleSelect(width_org, fratio, patchsz);
-        lv_l = std::max(lv_f-4,0); maxiter = 16; miniter = 16; 
+        lv_l = std::max(lv_f-3,0); maxiter = 16; miniter = 1; 
+        tv_innerit = 10; tv_solverit = 15; tv_sor = 1.6;
         usetvref = 1; 
         break;
       case 4:
